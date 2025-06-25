@@ -239,55 +239,51 @@ def mechanotransduction_example_gq(
         submit_tscc=submit_tscc,
     )
 
-def mechanotransduction_example_nuc_only(
+
+def nuc_mechanics(
     mesh_folder: Path,
     outdir: Path,
-    full_sims_folder: Path,
-    time_step: float,
+    max_force: float = 0.01,
+    start_force: float = 0.0,
+    u0: Path = Path(""),
     dry_run: bool = False,
     submit_tscc: bool = False,
-    a0_npc: float = 0.0,
-    nuc_compression: float = 0.0,
-    pore_size: float = 0.5,
-    pore_loc: float = 0.0,
-    pore_rate: float = 10.0,
-    transport_rate: float = 10.0,
-    transport_ratio: float = 1.0,
+    bulk_mod: float = 1e6,
+    nanopillar_radius: float = 0.25,
+    nanopillar_height: float = 1.0,
+    nanopillar_spacing: float = 2.5,
     **kwargs,
 ):
     args = [
         "--mesh-folder",
         Path(mesh_folder).as_posix(),
-        "--full-sims-folder",
-        Path(full_sims_folder).as_posix(),
-        "--time-step",
-        time_step,
-        "--a0-npc",
-        a0_npc,
+        "--max-force",
+        max_force,
+        "--start-force",
+        start_force,
+        "--u0",
+        u0,
+        "--bulk-mod",
+        bulk_mod,
+        "--nanopillar-radius",
+        nanopillar_radius,
+        "--nanopillar-height",
+        nanopillar_height,
+        "--nanopillar-spacing",
+        nanopillar_spacing,
         "--nuc-compression",
-        nuc_compression,
-        "--pore-size",
-        pore_size,
-        "--pore-loc",
-        pore_loc,
-        "--pore-rate",
-        pore_rate,
-        "--transport-rate",
-        transport_rate,
-        "--transport-ratio",
-        transport_ratio
     ]
 
     args.extend(["--outdir", Path(outdir).as_posix()])
 
     script = (
-        (here / ".." / "model-files" / "mechanotransduction_nucTransportOnly.py")
+        (here / ".." / "model-files" / "nuclear_deformation_mixed3d.py")
         .absolute()
         .resolve()
         .as_posix()
     )
     run(
-        job_name="mechanotransduction",
+        job_name="nucmech",
         args=args,
         dry_run=dry_run,
         script=script,

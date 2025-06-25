@@ -3,9 +3,20 @@ from smart import mesh_tools
 import numpy as np
 import pathlib
 import sys
+import argparse, logging
+
+from mech_parser_args import add_nucmech_arguments
+here = pathlib.Path(__file__).parent
+sys.path.insert(0, (here / ".." / "scripts").as_posix())
+
+smart_logger = logging.getLogger("smart")
+smart_logger.setLevel(logging.DEBUG)
+logger = logging.getLogger("mechanotransduction")
+logger.setLevel(logging.INFO)
+logger.info("Starting nuclear mechanics example")
 
 # here = pathlib.Path.cwd() 
-sys.path.insert(0, '/root/shared/gitrepos/smart-mechanotransduction/utils')
+sys.path.insert(0, (here / ".." / "mesh-files").as_posix())
 import spread_cell_mesh_generation as mesh_gen
 
 # Optimization options for the form compiler
@@ -20,15 +31,22 @@ try:
 except ImportError:
     import ufl
 
-# define nanopillar dimensions for current case
-npSpacing = 3.0
-npRad = 0.5
-xMax = 12.0 #np.floor((nucRad/2 - 2*npRad) / npSpacing) * npSpacing
-xNP = np.arange(-xMax, xMax+1e-12, npSpacing)
-yNP = np.arange(-xMax, xMax+1e-12, npSpacing)
-xNP, yNP = np.meshgrid(xNP, yNP)
-xNP = xNP.flatten()
-yNP = yNP.flatten()
+parser = argparse.ArgumentParser()
+add_nucmech_arguments(parser)
+args = vars(parser.parse_args())
+run_local = False
+if run_local:
+    cur_dir = str(pathlib.Path.cwd() / "..")
+    args["mesh_folder"] = pathlib.Path("")
+    args["max_force"] = 0.01
+    args["start_force"] = 0.0
+    args["u0"] = pathlib.Path("")
+    args["bulk_mod"] = 1e6
+    args["nanopillar_radius"] = 0.25
+    args["nanopillar_height"] = 1.0
+    args["nanopillar_spacing"] = 2.5
+    args["outdir"] = pathlib.Path(f"/root/shared/gitrepos/nuc_indent_1e6J_npRad{args['nanopillar_radius']}"
+                                  f"_npSpacing{args['nanopillar_spacing']}")
 
 # Create mesh and define function space
 nucRad1 = 6.625#5.5
@@ -36,22 +54,18 @@ nucRad2 = 3.0
 thickness = 0.05
 
 mesh_ref, mf2, mf3 = mesh_gen.NE_mesh(rRad=nucRad1, zRad=nucRad2, thickness=thickness,
-                                      hEdge=0.2, hInnerEdge=0.2, sym_fraction=0.25)
-# mesh_ref, mf2, mf3 = mesh_tools.create_ellipsoids(outerRad=[nucRad1,nucRad1,nucRad2],
-#                                                   innerRad=[nucRad1-thickness,nucRad1-thickness,nucRad2-thickness],
-#                                                   hEdge=0.2, hInnerEdge=0.2)
-# for c in cells(mesh_ref):
-#     if (c.midpoint().x() == 0 or c.midpoint().y() == 0) and mf3[c] == 1:
-#         mf3[c] = 1
-#     elif (c.midpoint().x() >= 0 and c.midpoint().y() > 0) and mf3[c] == 1:# and (
-#         # np.arctan(c.midpoint().y()/c.midpoint().x()) <= np.pi/4) and mf3[c] == 1:
-#         mf3[c] = 1
-#     else:
-#         mf3[c] = 0
-        
+                                      hEdge=0.2, hInnerEdge=0.2, sym_fraction=0.25)        
 mesh = create_meshview(mf3, 1)
 
-# mesh = BoxMesh(Point(-1.0,-1.0,0.0), Point(1.0,1.0,thickness),20,20,4)
+# define nanopillar dimensions for current case
+npSpacing = args["nanopillar_spacing"]
+npRad = args["nanopillar_radius"]
+xMax = np.ceil((max([nucRad1,nucRad2])) / npSpacing) * npSpacing
+xNP = np.arange(-xMax, xMax+1e-12, npSpacing)
+yNP = np.arange(-xMax, xMax+1e-12, npSpacing)
+xNP, yNP = np.meshgrid(xNP, yNP)
+xNP = xNP.flatten()
+yNP = yNP.flatten()
 
 mf_surf = MeshFunction("size_t", mesh, 2, 0)
 mf_dirichlet = MeshFunction("size_t", mesh, 2, 0)
@@ -77,6 +91,7 @@ class SymmAxis1(SubDomain):
         return x[1] < 0.001 and on_boundary
 class SymmAxis2(SubDomain):
     def inside(self, x, on_boundary):
+        # return np.arctan(x[1]/x[0]) > 0.999*np.pi/4 and on_boundary
         return x[0] < 0.001 and on_boundary
 outerSurf = OuterSurf()
 innerSurf = InnerSurf()
@@ -105,7 +120,9 @@ normals = project(normal_expr, V_vector)
 # mesh = RectangleMesh(Point(0.0, 0.0), Point(1.5*nucRad1, thickness), 151, 5)
 
 x = SpatialCoordinate(mesh)
-File("nuc_indent/test_shell.pvd") << mesh
+# results_folder = "/root/scratch/nuc_indent_1e6J_eighth"
+results_folder = args["outdir"]
+File(f"{results_folder}/test_shell.pvd") << mesh
 
 # Define mixed function space for displacement (u) and Lagrange multiplier (p)
 el1 = VectorElement("P", mesh.ufl_cell(), 2) # u function space
@@ -144,7 +161,11 @@ fmixed  = Function(Vmixed)                 # Displacement from previous iteratio
 
 domain_id = MeshFunction("size_t", mesh, 2, 0)
 for f in facets(mesh):
-    if f.midpoint().z() > 1.2*nucRad2 and mf_surf[f] == 10:
+    if mf_dirichlet[f] == 2:
+        domain_id[f] = 2
+    elif mf_dirichlet[f] == 3:
+        domain_id[f] = 3
+    elif f.midpoint().z() > 1.2*nucRad2 and mf_surf[f] == 10:
         domain_id[f] = 1
     # if (np.sqrt(f.midpoint().x()**2 + f.midpoint().y()**2) > 0.4 and 
     #     np.sqrt(f.midpoint().x()**2 + f.midpoint().y()**2) < 0.5):
@@ -179,7 +200,6 @@ idx = 0
 zMove = 0.1
 zStep = 0.1
 zFinal = zNP[-1] + zMove
-results_folder = "nuc_indent_1e5J_NPForce_mixed_incrBound3d_multNP"
 u_file = XDMFFile(f"{results_folder}/u_np_ellipsoid.xdmf")
 u_file.parameters["flush_output"] = True
 u_file.write(u, idx)
@@ -188,13 +208,13 @@ a_vector = project(a_vector, V_vector)
 a_file = XDMFFile(f"{results_folder}/a_np_ellipsoid.xdmf")
 a_file.parameters["flush_output"] = True
 a_file.write(a_vector, idx)
-kMin = 0.0
-kRepel = 1e6
+kMin = args["start_force"]
+kMax = args["max_force"]
 kRamp = [kMin]
 
 u.set_allow_extrapolation(True)
 
-zIndent = 4.0
+zIndentMax = args["nanopillar_height"]
 
 a_scalar = ufl.sqrt(a_vector[0]**2 + a_vector[1]**2 + a_vector[2]**2)
 ds_integrate = Measure('ds', domain=mesh, subdomain_data=mf_surf)
@@ -206,7 +226,7 @@ inner_SA_ref = assemble(1.0*ds_integrate(12))
 outer_SA_ref = assemble(1.0*ds_integrate(10))
 vol_ref = assemble(1.0*dx_integrate)
 
-while u(0,0,2*nucRad2)[2] > -zIndent:#zNP[-1] < zFinal-1e-6:
+while u(0,0,2*nucRad2)[2] > -zIndentMax:#zNP[-1] < zFinal-1e-6:
 
     curForce = kRamp[-1]
     print(f"Current force is {curForce}")
@@ -219,7 +239,8 @@ while u(0,0,2*nucRad2)[2] > -zIndent:#zNP[-1] < zFinal-1e-6:
     # Pi = psi*x[0]*dx - dot(T,u)*x[0]*ds(1) #+ dot(Ptop,u)*x[0]*ds(2)
     # Fvar = derivative(Pi, u, v) #derivative(Pi, u, v) + derivative(Pi, p, q)
     # Fvar = derivative(Pi, u, v) - q*(J - 1)*x[0]*dx
-    Fvar = inner(grad(v), Ttensor)*dx - inner(v, T)*ds(1) + inner(q, 1e5*(J-1) + p) * dx
+    Fvar = (inner(grad(v), Ttensor)*dx - inner(v, T)*ds(1) + 
+            inner(q, args["bulk_mod"]*(J-1) + p) * dx) # + inner(q, u[0]-u[1])*ds(3) + inner(q, u[1])*ds(2)
     # Compute Jacobian of F
     Jvar = derivative(Fvar, u, du) + derivative(Fvar, p, dp)
     # Define problem and solver with custom settings
@@ -229,16 +250,14 @@ while u(0,0,2*nucRad2)[2] > -zIndent:#zNP[-1] < zFinal-1e-6:
     prm["newton_solver"]["absolute_tolerance"] = 1E-8
     prm["newton_solver"]["relative_tolerance"] = 1E-6
     prm["newton_solver"]["maximum_iterations"] = 100
+    prm["newton_solver"]["linear_solver"] = 'mumps'
     # try solving, if diverges, take smaller step
     try:
         solver.solve()
-        if kRamp[-1] < kRepel:
-            kRamp.append(min([kRamp[-1]+1e-3, kRepel]))
-            # continue
-        elif kRamp[-1] == kRepel:
-            kRamp = [kMin]
+        if kRamp[-1] < kMax:
+            kRamp.append(min([kRamp[-1]+1e-3, kMax]))
         else:
-            raise ValueError("k cannot be greater than kRepel")
+            break # then done with this simulation
     except:
         print(f"Resetting kRamp from {kRamp[-1]} to")
         if len(kRamp) == 1:

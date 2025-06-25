@@ -24,9 +24,9 @@ commands = {
         msg="Run mechanotransduction example",
         script=runner.mechanotransduction_example_gq
     ),
-    "mechanotransduction-nuc-only": Command(
-        msg="Run nuclear transport simulation",
-        script=runner.mechanotransduction_example_nuc_only
+    "nuc_mechanics": Command(
+        msg="Run nuclear mechanics simulation",
+        script=runner.nuc_mechanics
     ),
 }
 

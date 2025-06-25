@@ -18,12 +18,11 @@ def mechanotransduction_example_gq(parser: argparse.ArgumentParser):
 
     mech_parser_args.add_mechanotransduction_gq_arguments(parser)
 
-def mechanotransduction_nucOnly_example(parser: argparse.ArgumentParser):
+def nuc_mechanics(parser: argparse.ArgumentParser):
     sys.path.insert(0, (here / ".." / "model-files").as_posix())
     import mech_parser_args
 
-    mech_parser_args.add_mechanotransduction_nucOnly_arguments(parser)
-
+    mech_parser_args.add_nucmech_arguments(parser)
 
 def preprocess_mech_mesh(parser: argparse.ArgumentParser):
     sys.path.insert(0, (here / ".." / "model-files").as_posix())
@@ -56,17 +55,13 @@ def setup_parser() -> argparse.ArgumentParser:
     preprocess_mech_mesh(preprocess_mech_mesh_parser)
 
     mechanotransduction_parser = subparsers.add_parser(
-        "mechanotransduction", help="Run mechanotransduction example"
+        "mechanotransduction", help="Run mechanotransduction simulation"
     )
     mechanotransduction_example(mechanotransduction_parser)
 
     mechanotransduction_gq_parser = subparsers.add_parser(
-        "mechanotransduction_gq", help="Run mechanotransduction example"
+        "mechanotransduction_gq", help="Run mechanotransduction_gq simulation"
     )
     mechanotransduction_example_gq(mechanotransduction_gq_parser)
 
-    mechanotransduction_nucOnly_parser = subparsers.add_parser(
-        "mechanotransduction-nuc-only", help="Run mechanotransduction example with pore formation"
-    )
-    mechanotransduction_nucOnly_example(mechanotransduction_nucOnly_parser)
     return parser

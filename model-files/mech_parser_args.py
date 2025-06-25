@@ -8,9 +8,7 @@ def add_mechanotransduction_arguments(parser: argparse.ArgumentParser) -> None:
     #   - outdir: pathlib path to output folder for current simulation
     #   - time-step: starting time step in s (float)
     #   - e-val: substrate stiffness in kPa (float)
-    #   - z-cutoff: (only needed when reaction-rate-on-np ~= 1) lower substrate is defined by z < z_cutoff (float)
     #   - curv-sens: H0 in curvature-sensitive FAK phosphorylation equation (float)
-    #   - reaction-rate-on-np: (not used in simulations for paper) - defines fractional activation on nanopillars (float)
     #   - nuc-compression: nuclear indentation at central nanopillar in microns (float)
     #   - npc-slope: (not used in simulations for paper) - gradient in NPCs from bottom to top of NE 
     #                (0 - no gradient, 1 - ranges from max at bottom to 0 at top), total NPC number is conserved.  (float)
@@ -37,20 +35,10 @@ def add_mechanotransduction_arguments(parser: argparse.ArgumentParser) -> None:
         default=1e7,
     ) # stiffness for glass coverslip
     parser.add_argument(
-        "--z-cutoff",
-        type=float,
-        default=1e-4,
-    ) 
-    parser.add_argument(
         "--curv-sens",
         type=float,
         default=0.0,
     ) # curvature sensitivity factor of FAK phosph.
-    parser.add_argument(
-        "--reaction-rate-on-np",
-        type=float,
-        default=1.0,
-    ) # fractional FAK phosph. rate on nanopillars
     parser.add_argument(
         "--nuc-compression",
         type=float,
@@ -78,21 +66,9 @@ def add_mechanotransduction_arguments(parser: argparse.ArgumentParser) -> None:
     )
 
 def add_mechanotransduction_gq_arguments(parser: argparse.ArgumentParser) -> None:
-    # List of mechanotransduction arguments:
-    #  (mesh-folder and outdir are provided as strings and converted to pathlib.Path when called as script)
-    #   - mesh-folder: pathlib path to current mesh folder 
-    #   - outdir: pathlib path to output folder for current simulation
-    #   - time-step: starting time step in s (float)
-    #   - e-val: substrate stiffness in kPa (float)
-    #   - z-cutoff: (only needed when reaction-rate-on-np ~= 1) lower substrate is defined by z < z_cutoff (float)
-    #   - curv-sens: H0 in curvature-sensitive FAK phosphorylation equation (float)
-    #   - reaction-rate-on-np: (not used in simulations for paper) - defines fractional activation on nanopillars (float)
-    #   - nuc-compression: nuclear indentation at central nanopillar in microns (float)
-    #   - npc-slope: (not used in simulations for paper) - gradient in NPCs from bottom to top of NE 
-    #                (0 - no gradient, 1 - ranges from max at bottom to 0 at top), total NPC number is conserved.  (float)
-    #   - a0-npc: stretch sensitivity parameter for NPCs (float)
-    #   - WASP-rate: rate of N-WASP mediated curvature-sensitive actin assembly at substrate (float)
-    #   - endo-rate: baseline rate of integrin endocytosis (float)
+    # List of mechanotransduction_gq arguments, same as normal mech, but with addition args:
+    #   - mutant: whether or not current case is a Gq mutant (Bool)
+    #   - TRIO-ref: sets RhoA activation sensitivity to TRIO
     parser.add_argument(
         "--mesh-folder",
         type=Path,
@@ -113,20 +89,10 @@ def add_mechanotransduction_gq_arguments(parser: argparse.ArgumentParser) -> Non
         default=1e7,
     ) # stiffness for glass coverslip
     parser.add_argument(
-        "--z-cutoff",
-        type=float,
-        default=1e-4,
-    ) 
-    parser.add_argument(
         "--curv-sens",
         type=float,
         default=0.0,
     ) # curvature sensitivity factor of FAK phosph.
-    parser.add_argument(
-        "--reaction-rate-on-np",
-        type=float,
-        default=1.0,
-    ) # fractional FAK phosph. rate on nanopillars
     parser.add_argument(
         "--nuc-compression",
         type=float,
@@ -163,74 +129,51 @@ def add_mechanotransduction_gq_arguments(parser: argparse.ArgumentParser) -> Non
         default=0.01,
     )
 
-def add_mechanotransduction_nucOnly_arguments(parser: argparse.ArgumentParser) -> None:
-    # List of mechanotransduction_nucOnly arguments:
-    #   (mesh-folder, outdir, and full-sims-folder are provided as strings 
-    #    and converted to pathlib.Path when called as script)
+
+def add_nucmech_arguments(parser: argparse.ArgumentParser) -> None:
+    # List of nuclear mechanics arguments:
+    #  (mesh-folder and outdir are provided as strings and converted to pathlib.Path when called as script)
     #   - mesh-folder: pathlib path to current mesh folder 
     #   - outdir: pathlib path to output folder for current simulation
-    #   - full-sims-folder: pathlib path to full simulation (with FActin, MyoA, Lamin)
-    #   - nuc-compression: nuclear indentation at central nanopillar in microns (float)
-    #   - a0-npc: stretch sensitivity parameter for NPCs (float)
-    #   - pore-size: effective pore radius in microns (float)
-    #   - pore-loc: radial pore location (for single pore, fix to 0.0) (float)
-    #   - pore-rate: characteristic time for pore opening in s (float)
-    #   - transport-rate: krupture (float)
-    #   - transport-ratio: ratio between kin_rupture and kout_rupture (upsilon in model) (float)
+    #   - max-force: value of overall force to which to run this test (float)
+    #   - start-force: value of force to start simulation at (float)
+    #   - u0: starting displacement (from previous iteration perhaps) (dolfin function or xdmf file name)
+    #   - bulk-mod: effective bulk modulus to enforce incompressibility (float)
+    #   - nanopillar-radius: rNP in microns (float)
+    #   - nanopillar-height: hNP in microns (float)
+    #   - nanopillar-spacing: pNP (pitch) in microns (float)
+
     parser.add_argument(
         "--mesh-folder",
         type=Path,
-        default=Path.cwd().parent / "meshes" / "nanopillars_indent" / "nanopillars_indent2.8",
+        default=Path.cwd().parent / "meshes" / "nanopillars_baseline" / "nanopillars_h1.0_p2.5_r0.25_cellRad17.45"
     )
     parser.add_argument(
-        "--full-sims-folder",
-        type=Path,
-        default=Path.cwd().parent / "analysis_data" / "simulation_results_2.8indent"
+        "-o", "--outdir", type=Path, default=Path("results_nucmech")
     )
     parser.add_argument(
-        "-o", "--outdir", type=Path, default=Path("results_nucOnly")
-    )
-    parser.add_argument(
-        "-dt",
-        "--time-step",
+        "-max-force",
         type=float,
         default=0.01,
     )
     parser.add_argument(
-        "--a0-npc",
-        type=float,
-        default=5.0,
-    )
-    parser.add_argument(
-        "--nuc-compression",
-        type=float,
-        default=2.8,
-    ) # nuc indentation on nanopillars
-    parser.add_argument(
-        "--pore-size",
+        "--start-force",
         type=float,
         default=0.0,
     )
     parser.add_argument(
-        "--pore-loc",
-        type=float,
-        default=0.0,
+        "--u0",
+        type=Path,
+        default=Path.cwd().parent / "u0.xdmf",
     )
     parser.add_argument(
-        "--pore-rate",
+        "--bulk-mod",
         type=float,
-        default=0.0,
+        default=1e6,
     )
-    parser.add_argument(
-        "--transport-rate",
-        type=float,
-        default=10.0,
-    )
-    parser.add_argument(
-        "--transport-ratio",
-        type=float,
-        default=1.0,
-    )
+    parser.add_argument("--nanopillar-radius", type=float, default=0.25)
+    parser.add_argument("--nanopillar-height", type=float, default=1.0)
+    parser.add_argument("--nanopillar-spacing", type=float, default=2.5)
 
 
 def add_preprocess_mech_mesh_arguments(parser: argparse.ArgumentParser) -> None:
