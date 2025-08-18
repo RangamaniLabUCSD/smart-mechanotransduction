@@ -19,6 +19,7 @@ def main(
     contact_rad: float = 13.0,
     nuc_compression: float = 0.0,
     sym_fraction: float = 1/8,
+    no_nuc: bool = False
 ):
     here = Path(__file__).parent.absolute()
     sys.path.append((here / ".." / "utils").as_posix())
@@ -34,7 +35,8 @@ def main(
                                                                         nanopillars=nanopillars,
                                                                         return_curvature=True,
                                                                         sym_fraction=sym_fraction,
-                                                                        nuc_compression=nuc_compression)
+                                                                        nuc_compression=nuc_compression,
+                                                                        no_nuc=no_nuc)
 
     mesh_folder = Path(mesh_folder)
     mesh_folder.mkdir(exist_ok=True, parents=True)
