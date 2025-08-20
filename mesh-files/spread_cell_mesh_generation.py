@@ -594,7 +594,7 @@ def NE_mesh(
     verbose: bool = False,
     use_tmp: bool = False,
     sym_fraction: float = 1.0,
-    NE_layers: int = 5,
+    NE_layers: int = 1,
 ) -> Tuple[d.Mesh, d.MeshFunction, d.MeshFunction]:
     """
     Creates a 3d cell mesh.
@@ -665,6 +665,7 @@ def NE_mesh(
         [outer_edge, symm_axis_tag]
     )
     cell_plane_tag = gmsh.model.occ.add_plane_surface([outer_loop_tag])
+    # gmsh.model.occ.synchronize()
     outer_shape = gmsh.model.occ.revolve([(2, cell_plane_tag)], 0, 0, 0, 0, 0, 1, 2*np.pi*sym_fraction)
 
     outer_shape_tags = []
@@ -673,62 +674,69 @@ def NE_mesh(
             outer_shape_tags.append(outer_shape[i][1])
     assert len(outer_shape_tags) == 1  # should be just one 3D body from the full revolution
 
-    # Inner shape(s)
+    # Create inner shape
+    inner_top = gmsh.model.occ.add_point(0.0, 0.0, 2*zRad-thickness[1])
+    inner_bottom = gmsh.model.occ.add_point(0.0, 0.0, thickness[1])
+    
+    inner_edge = gmsh.model.occ.add_ellipse(0, 0, zRad, rRad-thickness[0], zRad-thickness[1], 
+                                            angle1=-np.pi/2, angle2=np.pi/2,
+                                            zAxis=[0,1,0], xAxis=[1,0,0])
+    symm_inner_tag = gmsh.model.occ.add_line(inner_top, inner_bottom)
+    inner_loop_tag = gmsh.model.occ.add_curve_loop([inner_edge, symm_inner_tag])
+    inner_plane_tag = gmsh.model.occ.add_plane_surface([inner_loop_tag])
+    inner_shape = gmsh.model.occ.revolve([(2, inner_plane_tag)], 
+                                        0, 0, 0, 0, 0, 1, 2 * np.pi * sym_fraction)
+
+    inner_shape_tags = []
+    for i in range(len(inner_shape)):
+        if inner_shape[i][0] == 3:  # pull out tags associated with 3d objects
+            inner_shape_tags.append(inner_shape[i][1])
+    assert len(inner_shape_tags) == 1  # should be just one 3D body from the full revolution
+
+    # Create interface between 2 objects
+    two_shapes, (outer_shape_map, inner_shape_map) = gmsh.model.occ.fragment(
+        [(3, outer_shape_tags[0])], [(3, inner_shape_tags[0])]
+    )
+    outer_shape_tags = inner_shape_tags
+
+    gmsh.model.occ.synchronize()
+
+    # Get the outer boundary
+    outer_shell = gmsh.model.getBoundary(two_shapes, oriented=False)
+    outer_shell_tags = []
+    for i in range(len(outer_shell)):
+        outer_shell_tags.append(outer_shell[i][1])
+        # embed additional points on boundary for mesh refinement
+    # gmsh.model.occ.synchronize()
+    # outer_shell_init = gmsh.model.getBoundary([(3,outer_shape_tags[0])], oriented=False)
+    embed_points = []
+    for j in range(NE_layers-1):
+        cur_rthickness = (j+1)*thickness[0]/NE_layers
+        cur_zthickness = (j+1)*thickness[1]/NE_layers
+        inner_top = gmsh.model.occ.add_point(0.02, 0.0, 2*zRad-cur_zthickness)
+        inner_bottom = gmsh.model.occ.add_point(0.02, 0.0, cur_zthickness)
+        embed_points.append((0, inner_top))
+        embed_points.append((0, inner_bottom))
+    gmsh.model.occ.fragment(outer_shell, embed_points)
+    # outer_shell_init = fragment_out[0][0][1]
+    
+    # Add physical markers for facets
+    gmsh.model.add_physical_group(
+        outer_shell[0][0], outer_shell_tags, tag=outer_marker
+    )
+
+    # Get the inner boundary
+    inner_shell = gmsh.model.getBoundary(inner_shape_map, oriented=False)
+    inner_shell_tags = []
+    for i in range(len(inner_shell)):
+        inner_shell_tags.append(inner_shell[i][1])
+    gmsh.model.add_physical_group(inner_shell[0][0], inner_shell_tags)#, tag=interface_marker)
+
+    # Physical markers for volumes
     all_volumes = []
-    for i in range(NE_layers):
-        cur_rthickness = (i+1)*thickness[0]/NE_layers
-        cur_zthickness = (i+1)*thickness[1]/NE_layers
-        inner_top = gmsh.model.occ.add_point(0.0, 0.0, 2*zRad-cur_zthickness)
-        inner_bottom = gmsh.model.occ.add_point(0.0, 0.0, cur_zthickness)
-        inner_edge = gmsh.model.occ.add_ellipse(0, 0, zRad, rRad-cur_rthickness, zRad-cur_zthickness, 
-                                                angle1=-np.pi/2, angle2=np.pi/2,
-                                                zAxis=[0,1,0], xAxis=[1,0,0])
-        symm_inner_tag = gmsh.model.occ.add_line(inner_top, inner_bottom)
-        inner_loop_tag = gmsh.model.occ.add_curve_loop([inner_edge, symm_inner_tag])
-        inner_plane_tag = gmsh.model.occ.add_plane_surface([inner_loop_tag])
-        inner_shape = gmsh.model.occ.revolve([(2, inner_plane_tag)], 
-                                            0, 0, 0, 0, 0, 1, 2 * np.pi * sym_fraction)
+    for i in range(len(outer_shape_map)):
+        all_volumes.append(outer_shape_map[i][1])
 
-        inner_shape_tags = []
-        for i in range(len(inner_shape)):
-            if inner_shape[i][0] == 3:  # pull out tags associated with 3d objects
-                inner_shape_tags.append(inner_shape[i][1])
-        assert len(inner_shape_tags) == 1  # should be just one 3D body from the full revolution
-
-        # Create interface between 2 objects
-        two_shapes, (outer_shape_map, inner_shape_map) = gmsh.model.occ.fragment(
-            [(3, outer_shape_tags[0])], [(3, inner_shape_tags[0])]
-        )
-        outer_shape_tags = inner_shape_tags
-    
-        gmsh.model.occ.synchronize()
-
-        # Get the outer boundary
-        outer_shell = gmsh.model.getBoundary(two_shapes, oriented=False)
-        outer_shell_tags = []
-        for i in range(len(outer_shell)):
-            outer_shell_tags.append(outer_shell[i][1])
-        # Add physical markers for facets
-        if i == 0:
-            gmsh.model.add_physical_group(
-                outer_shell[0][0], outer_shell_tags, tag=outer_marker
-            )
-        else:
-            gmsh.model.add_physical_group(
-                outer_shell[0][0], outer_shell_tags)#, 
-                # tag=max([interface_marker,outer_marker])+100*i)
-        if i == NE_layers-1:
-            # Get the inner boundary
-            inner_shell = gmsh.model.getBoundary(inner_shape_map, oriented=False)
-            inner_shell_tags = []
-            for i in range(len(inner_shell)):
-                inner_shell_tags.append(inner_shell[i][1])
-            gmsh.model.add_physical_group(inner_shell[0][0], inner_shell_tags)#, tag=interface_marker)
-
-        # Physical markers for volumes
-        for i in range(len(outer_shape_map)):
-            all_volumes.append(outer_shape_map[i][1])
-    
     inner_volume = [tag[1] for tag in inner_shape_map]
     outer_volume = []
     for vol in all_volumes:
@@ -762,17 +770,17 @@ def NE_mesh(
         lc2 = hInnerEdge
         if in_outer:
             lcTest = lc1 + (lc2 - lc1) * (1 - R_rel_outer) / (1 - innerRad_scale)
-            # also scale by distance from z = 0 axis
-            zWeight = np.exp(-z/1.0)
-            lcTest = (1-zWeight)*lcTest + zWeight*lcTest/2
         else:
             lcTest = lc2 + (lc3 - lc2) * (1 - R_rel_inner)
+        # also scale by distance from z = 0 axis
+        zWeight = (1 - np.tanh((z-zRad)/2))/2
+        lcTest = (1-zWeight)*2*lcTest + zWeight*lcTest/2
         return lcTest
 
     gmsh.model.mesh.setSizeCallback(meshSizeCallback)
     # set off the other options for mesh size determination
     gmsh.option.setNumber("Mesh.MeshSizeExtendFromBoundary", 0)
-    gmsh.option.setNumber("Mesh.MeshSizeFromPoints", 0)
+    gmsh.option.setNumber("Mesh.MeshSizeFromPoints", 1)
     gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 0)
     # this changes the algorithm from Frontal-Delaunay to Delaunay,
     # which may provide better results when there are larger gradients in mesh size

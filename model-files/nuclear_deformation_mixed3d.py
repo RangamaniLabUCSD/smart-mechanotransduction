@@ -23,7 +23,7 @@ logger.info("Starting nuclear mechanics example")
 
 # here = pathlib.Path.cwd() 
 sys.path.insert(0, (here / ".." / "mesh-files").as_posix())
-import spread_cell_mesh_generation_old as mesh_gen
+import spread_cell_mesh_generation as mesh_gen
 
 # Optimization options for the form compiler
 parameters["form_compiler"]["cpp_optimize"] = True
@@ -48,21 +48,21 @@ if run_local:
     args["start_force"] = 0.0
     args["u0"] = pathlib.Path("")
     args["bulk_mod"] = 1e8
-    args["nanopillar_radius"] = 0.5
-    args["nanopillar_height"] = 0.0
-    args["nanopillar_spacing"] = 3.0
-    args["outdir"] = pathlib.Path(f"/root/shared/gitrepos/nuc_indent_testOldScript")#{args['bulk_mod']}J"
+    args["nanopillar_radius"] = 0.3
+    args["nanopillar_height"] = 1.0
+    args["nanopillar_spacing"] = 2.5
+    args["outdir"] = pathlib.Path(f"/root/shared/gitrepos/nuc_indent_hNP1_evolvePressure")#{args['bulk_mod']}J"
                                 #   f"_npRad{args['nanopillar_radius']}"
                                 #   f"_npSpacing{args['nanopillar_spacing']}_5layersWithPress")
 
 # Create mesh and define function space
-nucRad1 = 5.09#6.625#5.5
-nucRad2 = 5.09#3.0
+nucRad1 = 4.5#5.09#6.625#5.5
+nucRad2 = 4.5#5.09#3.0
 thickness = 0.05
 rthickness = thickness
 zthickness = thickness
-NE_layers = 2
-hEdge = 0.3
+NE_layers = 1
+hEdge = 0.2
 
 zRoof = np.inf
 zRoofAlt = 10.0
@@ -70,6 +70,7 @@ zRoofAlt = 10.0
 mesh_ref, mf2, mf3 = mesh_gen.NE_mesh(rRad=nucRad1, zRad=nucRad2, thickness=[rthickness,zthickness],
                                       hEdge=hEdge, hInnerEdge=hEdge, sym_fraction=0.25, NE_layers=NE_layers)        
 mesh = create_meshview(mf3, 1)
+inner_mesh = create_meshview(mf3, 2)
 
 # def mf_to_submf(mf_old, mesh):
 #     cur_dim = mf_old.dim()
@@ -133,43 +134,46 @@ xNP, yNP = np.meshgrid(xNP, yNP)
 xNP = xNP.flatten()
 yNP = yNP.flatten()
 
+nanopillar_specs = dict()
+nanopillar_specs["hNP"] = hNP
+nanopillar_specs["npRad"] = npRad
+nanopillar_specs["npSpacing"] = npSpacing
+nanopillar_specs["xNP"] = xNP
+nanopillar_specs["yNP"] = yNP
+
 mf_surf = MeshFunction("size_t", mesh, 2, 0)
 mf_dirichlet = MeshFunction("size_t", mesh, 2, 0)
 mf_edge = MeshFunction("size_t", mesh, 2, 0)
 
 # redetermine surface markers
-# rad_eff1 = (nucRad1**2 * nucRad2)**(1/3)
-# rad_eff2 = ((nucRad1-rthickness)**2 * (nucRad2-zthickness))**(1/3)
-# thickness_thresh = ((rad_eff1 - rad_eff2) / NE_layers)
-# class OuterSurf(SubDomain):
-#     def inside(self, x, on_boundary):
-#         bound_val = pow(pow(x[0]/nucRad1,2) + pow(x[1]/nucRad1,2) + 
-#                     pow((x[2]-nucRad2)/nucRad2,2),0.5)
-#         cutoffFrac = 1-0.5*thickness_thresh/rad_eff1
-#         return bound_val > cutoffFrac and on_boundary
-# class InnerSurf(SubDomain):
-#     def inside(self, x, on_boundary):
-#         bound_val = pow(pow(x[0]/(nucRad1-rthickness),2) + pow(x[1]/(nucRad1-rthickness),2) +
-#                     pow((x[2]-nucRad2)/(nucRad2-zthickness),2),0.5)
-#         cutoffFrac1 = 1+0.5*thickness_thresh/rad_eff2
-#         cutoffFrac2 = 1-0.5*thickness_thresh/rad_eff2
-#         return  bound_val < cutoffFrac1 and bound_val > cutoffFrac2
+rad_eff1 = (nucRad1**2 * nucRad2)**(1/3)
+rad_eff2 = ((nucRad1-rthickness)**2 * (nucRad2-zthickness))**(1/3)
+thickness_thresh = ((rad_eff1 - rad_eff2) / NE_layers)
 class OuterSurf(SubDomain):
     def inside(self, x, on_boundary):
-        return pow(pow(x[0]/nucRad1,2) + pow(x[1]/nucRad1,2) + 
-                   pow((x[2]-nucRad2)/nucRad2,2),0.5) > 0.999 and on_boundary
-        # return on_boundary and near(x[2], 0.0)
+        bound_val = pow(pow(x[0]/nucRad1,2) + pow(x[1]/nucRad1,2) + 
+                    pow((x[2]-nucRad2)/nucRad2,2),0.5)
+        cutoffFrac = 1-0.5*thickness_thresh/rad_eff1
+        return bound_val > cutoffFrac and on_boundary
 class InnerSurf(SubDomain):
     def inside(self, x, on_boundary):
-        return pow(pow(x[0]/(nucRad1-thickness),2) + pow(x[1]/(nucRad1-thickness),2) +
-                   pow((x[2]-nucRad2)/(nucRad2-thickness),2),0.5) < 1.001 and on_boundary
-        # return on_boundary and near(x[2], thickness)
+        bound_val = pow(pow(x[0]/(nucRad1-rthickness),2) + pow(x[1]/(nucRad1-rthickness),2) +
+                    pow((x[2]-nucRad2)/(nucRad2-zthickness),2),0.5)
+        cutoffFrac1 = 1+0.5*thickness_thresh/rad_eff2
+        cutoffFrac2 = 1-0.5*thickness_thresh/rad_eff2
+        return  bound_val < cutoffFrac1 and bound_val > cutoffFrac2
 
 class NanopillarContact(SubDomain):
     def inside(self, x, on_boundary):
         radialVal = np.sqrt((x[0]/(nucRad1))**2 + (x[1]/(nucRad1))**2 +
                             ((x[2]-nucRad2)/(nucRad2))**2)
         return (np.sqrt(x[0]**2 + x[1]**2) < npRad and x[2] < nucRad2 and on_boundary
+                and radialVal > 0.999)
+class FloorContact(SubDomain):
+    def inside(self, x, on_boundary):
+        radialVal = np.sqrt((x[0]/(nucRad1))**2 + (x[1]/(nucRad1))**2 +
+                            ((x[2]-nucRad2)/(nucRad2))**2)
+        return (np.sqrt(x[0]**2 + x[1]**2) > npRad and x[2] < 1e-6-hNP and on_boundary
                 and radialVal > 0.999)
         # return on_boundary and near(x[2], 0.0) and (np.sqrt(x[0]**2 + x[1]**2) < 0.2)
 class NanopillarContactInner(SubDomain):
@@ -202,12 +206,14 @@ outerSurf.mark(mf_surf, 10) # mark outer surface points as 10
 innerSurf.mark(mf_surf, 12) # mark inner surface points as 12
 
 nanopillar = NanopillarContact()
+floor = FloorContact()
 nanopillarInner = NanopillarContactInner()
 roof = UpperContact()
 roofInner = UpperContactInner()
 symm1 = SymmAxis1()
 symm2 = SymmAxis2()
 nanopillar.mark(mf_dirichlet, 1) # mark nanopillar contact with 1
+nanopillarInner.mark(mf_dirichlet, 7)
 nanopillarInner.mark(mf_dirichlet, 5)
 array_dirichlet = mf_dirichlet.array()[:]
 array_ref = mf_surf.array()[:]
@@ -273,11 +279,14 @@ V1 = Vmixed.sub(0)
 # left = CompiledSubDomain("near(x[0], 0.0) && on_boundary")
 
 # Define Dirichlet boundary conditions
-Vouter = FunctionSpace(create_meshview(mf_surf, 10), "P", 1)
-Vinner = FunctionSpace(create_meshview(mf_surf, 12), "P", 1)
+V = FunctionSpace(mesh, "P", 1)
+# Vouter = FunctionSpace(create_meshview(mf_surf, 10), "P", 1)
+# Vinner = FunctionSpace(create_meshview(mf_surf, 12), "P", 1)
 # zDispl = Expression(("0.0","0.0","-r2*(1-sqrt(1-pow(x[0]/r1,2)-pow(x[1]/r1,2)))"), degree=1, r1=nucRad1, r2=nucRad2)
-zDisplOuter = Expression("-r2*(1-sqrt(1-pow(x[0]/r1,2)-pow(x[1]/r1,2)))", degree=1, r1=nucRad1, r2=nucRad2)
-# zDisplOuter = interpolate(zDisplOuterExpr, Vouter)
+zDisplOuterExpr = Expression("-r2*(1-sqrt(1-pow(x[0]/r1,2)-pow(x[1]/r1,2)))", degree=1, r1=nucRad1, r2=nucRad2)
+zDisplOuter = interpolate(zDisplOuterExpr, V)
+zDisplFloorExpr = Expression("-hNP-r2*(1-sqrt(1-pow(x[0]/r1,2)-pow(x[1]/r1,2)))", degree=1, hNP=hNP, r1=nucRad1, r2=nucRad2)
+zDisplFloor = interpolate(zDisplFloorExpr, V)
 zDisplInner = Expression("z1-(r2-(r2-z1)*sqrt(1-pow(x[0]/r1,2)-pow(x[1]/r1,2)))", degree=1, 
                          z1=zthickness, r1=nucRad1-rthickness, r2=nucRad2)
 zDisplUpper = Expression("zMax-r2*(1+sqrt(1-pow(x[0]/r1,2)-pow(x[1]/r1,2)))", degree=1, zMax=zRoof, r1=nucRad1, r2=nucRad2)
@@ -285,6 +294,7 @@ zDisplUpperInner = Expression("zMax-(r2+(r2-z1)*sqrt(1-pow(x[0]/r1,2)-pow(x[1]/r
                               zMax=zRoof-zthickness, r1=nucRad1-rthickness, r2=nucRad2, z1=zthickness)
 # zDispl = Expression("0.0", degree=1)
 bc_nanopillar = DirichletBC(V1.sub(2), zDisplOuter, mf_dirichlet, 1)
+bc_floor = DirichletBC(V1.sub(2), zDisplFloor, mf_dirichlet, 7)
 bc_nanopillar_inner = DirichletBC(V1.sub(2), zDisplInner, mf_dirichlet, 5)
 bc_upper = DirichletBC(V1.sub(2), zDisplUpper, mf_dirichlet, 4)
 bc_upper_inner = DirichletBC(V1.sub(2), zDisplUpperInner, mf_dirichlet, 6)
@@ -296,10 +306,10 @@ bc_symm2_y = DirichletBC(V1.sub(1), Constant(0.0), mf_dirichlet, 3)
 # bc_symmEdge1 = DirichletBC(V1.sub(0), Constant(0.0), mf_edge, 1)
 # bc_symmEdge2 = DirichletBC(V1.sub(1), Constant(0.0), mf_edge, 1)
 if not np.isinf(zRoof):
-    bcs = [bc_nanopillar, bc_nanopillar_inner, bc_upper, 
-           bc_upper_inner, bc_symm1_y, bc_symm2_x]
+    bcs = [bc_nanopillar, bc_floor, bc_upper, 
+           bc_symm1_y, bc_symm2_x]
 else:
-    bcs = [bc_nanopillar, bc_nanopillar_inner, bc_symm1_y, bc_symm2_x]
+    bcs = [bc_nanopillar, bc_floor, bc_symm1_y, bc_symm2_x]
 
 # Define functions
 # du = TrialFunction(V1)
@@ -363,22 +373,22 @@ zStep = 0.1
 zFinal = zNP[-1] + zMove
 kMin = args["start_force"]
 kMax = args["max_force"]
-kInc = 0.5 #max([0.001, (args["max_force"]-args["start_force"])/1000])
+kInc = 2.0 #max([0.001, (args["max_force"]-args["start_force"])/1000])
 kRamp = [0.0]#[kMin]
 pMin = 0.0
-pMax = 140.0
+pMax = 100.0
 pRamp = [pMin]
 p0 = Constant(0e4)
 dpress = 20.0
 
 u_file = XDMFFile(f"{results_folder}/u_np_ellipsoid.xdmf")
 u_file.parameters["flush_output"] = True
-u_file.write(fmixed.split()[0], pRamp[-1]+kRamp[-1])
+u_file.write(fmixed.split()[0], idx)
 a_vector = J * dot(normals, inv(F))
 a_vector = project(a_vector, V_vector)
 a_file = XDMFFile(f"{results_folder}/a_np_ellipsoid.xdmf")
 a_file.parameters["flush_output"] = True
-a_file.write(a_vector, pRamp[-1]+kRamp[-1])
+a_file.write(a_vector, idx)
 
 # u.set_allow_extrapolation(True)
 
@@ -416,10 +426,6 @@ topContactForce_inner = Function(V_vector)
 dx = Measure("dx", domain=mesh, subdomain_data=mf_vol)
 Ttensor = diff(psi, F)
 Ttensor_in = diff(psi2, F)
-# Pi = ufl.diff(psi, F) + p * J * ufl.inv(F.T)
-# Pi = psi*x[0]*dx - dot(T,u)*x[0]*ds(1) #+ dot(Ptop,u)*x[0]*ds(2)
-# Fvar = derivative(Pi, u, v) #derivative(Pi, u, v) + derivative(Pi, p, q)
-# Fvar = derivative(Pi, u, v) - q*(J - 1)*x[0]*dx
 Fvar = (inner(grad(v), Ttensor)*dx(1) + inner(grad(v), Ttensor_in)*dx(2) - 
         inner(v, T+Press_out)*ds(1) - inner(v, topContactForce)*ds(1) - inner(v, topContactForce_inner+Press_in)*ds(4) - 
         inner(v, Press_in)*ds(12) - inner(v, Press_out)*ds(10) + 
@@ -430,12 +436,6 @@ test_var = u - u_prev
 # Compute Jacobian of F
 dw = TrialFunction(Vmixed)
 Jvar = derivative(Fvar, fmixed)#, dw)
-# du0, du1, du2 = split(du)
-# u0, u1, u2 = split(u)
-# Jvar = (derivative(Fvar, u0, du0) + derivative(Fvar, u0, du1) + derivative(Fvar, u0, du2) + derivative(Fvar, u0, dp) +
-#         derivative(Fvar, u1, du0) + derivative(Fvar, u1, du1) + derivative(Fvar, u1, du2) + derivative(Fvar, u1, dp) +
-#         derivative(Fvar, u2, du0) + derivative(Fvar, u2, du1) + derivative(Fvar, u2, du2) + derivative(Fvar, u2, dp) +
-#         derivative(Fvar, p, du0) + derivative(Fvar, p, du1) + derivative(Fvar, p, du2) + derivative(Fvar, p, dp))
 # Define problem and solver with custom settings
 def init_solver(Fvar, fmixed, bcs, Jvar):
     problem = NonlinearVariationalProblem(Fvar, fmixed, bcs, J=Jvar)
@@ -451,45 +451,6 @@ def init_solver(Fvar, fmixed, bcs, Jvar):
     # print(f'LU solver params: {dict(solver.parameters["newton_solver"]["lu_solver"])}')
     # print(f'SNES solver params: {dict(solver.parameters["snes_solver"])}')
     return solver
-
-# def init_custom_solver(Fvar, fmixed, bcs, Jvar):
-
-#     class Problem(NonlinearProblem):
-#         def __init__(self, J, F, bcs):
-#             self.bilinear_form = J
-#             self.linear_form = F
-#             self.bcs = bcs
-#             NonlinearProblem.__init__(self)
-
-#         def F(self, b, x):
-#             assemble(self.linear_form, tensor=b)
-#             for bc in self.bcs:
-#                 bc.apply(b, x)
-
-#         def J(self, A, x):
-#             assemble(self.bilinear_form, tensor=A)
-#             for bc in self.bcs:
-#                 bc.apply(A)
-
-
-#     class CustomSolver(PETScSNESSolver):
-#         def __init__(self):
-#             PETScSNESSolver.__init__(self, mesh.mpi_comm())
-
-#         def solver_setup(self, A, P, problem, iteration):
-#             self.linear_solver().set_operator(A)
-
-#             prm = self.parameters
-#             prm["absolute_tolerance"] = 1E-8
-#             prm["relative_tolerance"] = 1E-6
-#             prm["maximum_iterations"] = 100
-#             prm["linear_solver"] = 'bcgs'
-#             prm["preconditioner"] = "hypre"
-#             prm["line_search"] = "l2"
-    # problem = Problem(Jvar, Fvar, bcs)
-    # solver = CustomSolver()
-    # return (problem, solver)
-    # Define the function/jacobian blocks
     
 class SNESProblem():
     def __init__(self, F, fmixed, u, p, bcs):
@@ -555,8 +516,10 @@ else:
 
 
 fmixed_prev = fmixed.vector()[:].copy()
+uEval = fmixed.sub(0)
+uEval.set_allow_extrapolation(True)
 
-while kRamp[-1] < kMax: #min(u.vector()[V1.dofmap().dofs()[2:-1:3]]) > -zIndentMax:
+while True: #min(u.vector()[V1.dofmap().dofs()[2:-1:3]]) > -zIndentMax:
 
     idx += 1
     keepSwimming = True
@@ -626,75 +589,98 @@ while kRamp[-1] < kMax: #min(u.vector()[V1.dofmap().dofs()[2:-1:3]]) > -zIndentM
             print(f"Done computing idx = {idx} after maximum ({it}) iterations, def = {uEval(0,0,2*nucRad2)[2]}")
             break
         fmixed_prev = fmixed.vector()[:].copy()
-        # update bcs as needed
         coords = mf_dirichlet.mesh().coordinates()
-        reinit = False
-        keepSwimming = False
-        uEval = fmixed.sub(0)
-        uEval.set_allow_extrapolation(True)
-        for f in facets(mesh):
-            if mf_surf[f] == 10:
-                xCur = [f.midpoint().x(), f.midpoint().y(), f.midpoint().z()]
-                uCur = uEval(xCur)
-                xDef = xCur + uCur
-                all_dist = np.sqrt((xNP-xDef[0])**2 + (yNP-xDef[1])**2)
-                if xDef[2] <= 1e-6 and (np.any(all_dist <= npRad) or xDef[2] <= (-hNP+1e-6)):
-                    if mf_dirichlet[f] == 0: 
-                        reinit = True
-                        keepSwimming = True
-                        mf_dirichlet[f] = 1
-                        domain_id[f] = 11
-                elif mf_dirichlet[f] == 1 and not (np.any(all_dist <= npRad) or xDef[2] <= (-hNP+1e-6)):
-                    reinit = True
-                    keepSwimming = True
-                    mf_dirichlet[f] = 0
-                    domain_id[f] = 10
-                elif xDef[2] >= zRoof and mf_dirichlet[f] != 4:
-                    domain_id[f] = 1
-                    reinit = True
-                    mf_dirichlet[f] = 4
-                    keepSwimming = True
-                        # bc_num = len(bcs) + 1
-                        # mf_dirichlet[f] = bc_num
-                        # bcs.append(DirichletBC(V1, Constant((uCur[0], uCur[1], -xCur[2])), mf_dirichlet, bc_num))
-                # if xDef[2] <= 0 and ((rDef <= 0.1*nucRad1)):# or (xDef[0] <= 0.6*nucRad1 and xDef[0] > 0.5*nucRad1)):
-                #     mf_dirichlet[f] = 1
-                # test for intersections
-                # Jtest = project(J, V_scalar)
-                # if np.any(Jtest.vector()[:] < 0.0):
-                #     print("uh oh!!")
-            if mf_surf[f] == 12:
-                xCur = [f.midpoint().x(), f.midpoint().y(), f.midpoint().z()]
-                uCur = uEval(xCur)
-                xDef = xCur + uCur
-                all_dist = np.sqrt((xNP-xDef[0])**2 + (yNP-xDef[1])**2)
-                if xDef[2] <= zthickness+1e-6 and (np.any(all_dist <= npRad) or xDef[2] <= (-hNP+1e-6+zthickness)):
-                    if mf_dirichlet[f] == 0: 
-                        reinit = True
-                        keepSwimming = True
-                        mf_dirichlet[f] = 5
-                elif mf_dirichlet[f] == 5 and not (np.any(all_dist <= npRad) or xDef[2] <= (-hNP+1e-6+zthickness)):
-                    reinit = True
-                    keepSwimming = True
-                    mf_dirichlet[f] = 0
-                    domain_id[f] = 12
-                elif xDef[2] >= zRoof-zthickness and mf_dirichlet[f] != 6:
-                    domain_id[f] = 4
-                    reinit = True
-                    mf_dirichlet[f] = 6
-                    keepSwimming = True
         
-
+        def update_bcs(fmixed, mf_dirichlet, domain_id, mf_surf, nanopillar_specs):
+            # update bcs as needed
+            reinit = False
+            keepSwimming = False
+            uEval = fmixed.sub(0)
+            uEval.set_allow_extrapolation(True)
+            # load nanopillar specs
+            hNP = nanopillar_specs["hNP"]
+            npRad = nanopillar_specs["npRad"]
+            xNP = nanopillar_specs["xNP"]
+            yNP = nanopillar_specs["yNP"]
+            for f in facets(mesh):
+                if mf_surf[f] == 10:
+                    xCur = [f.midpoint().x(), f.midpoint().y(), f.midpoint().z()]
+                    uCur = uEval(xCur)
+                    xDef = xCur + uCur
+                    all_dist = np.sqrt((xNP-xDef[0])**2 + (yNP-xDef[1])**2)
+                    if xDef[2] <= 1e-6:
+                        if np.any(all_dist <= npRad) and mf_dirichlet[f] != 1: 
+                                reinit = True
+                                keepSwimming = True
+                                mf_dirichlet[f] = 1
+                                domain_id[f] = 11
+                        elif mf_dirichlet[f] == 1 and not np.any(all_dist <= npRad):# or xDef[2] <= (-hNP+1e-6):
+                            reinit = True
+                            keepSwimming = True
+                            mf_dirichlet[f] = 0
+                            domain_id[f] = 10
+                        elif xDef[2] <= (-hNP+1e-6) and mf_dirichlet[f] != 7:
+                            reinit = True
+                            keepSwimming = True
+                            mf_dirichlet[f] = 7
+                            domain_id[f] = 11
+                        elif mf_dirichlet[f] == 7 and not (xDef[2] <= (-hNP+1e-6)): # should only be if hNP is increasing
+                            reinit = True
+                            keepSwimming = True
+                            mf_dirichlet[f] = 0
+                            domain_id[f] = 10
+                    elif xDef[2] >= zRoof and mf_dirichlet[f] != 4:
+                        domain_id[f] = 1
+                        reinit = True
+                        mf_dirichlet[f] = 4
+                        keepSwimming = True
+                            # bc_num = len(bcs) + 1
+                            # mf_dirichlet[f] = bc_num
+                            # bcs.append(DirichletBC(V1, Constant((uCur[0], uCur[1], -xCur[2])), mf_dirichlet, bc_num))
+                    # if xDef[2] <= 0 and ((rDef <= 0.1*nucRad1)):# or (xDef[0] <= 0.6*nucRad1 and xDef[0] > 0.5*nucRad1)):
+                    #     mf_dirichlet[f] = 1
+                    # test for intersections
+                    # Jtest = project(J, V_scalar)
+                    # if np.any(Jtest.vector()[:] < 0.0):
+                    #     print("uh oh!!")
+                # if mf_surf[f] == 12:
+                #     xCur = [f.midpoint().x(), f.midpoint().y(), f.midpoint().z()]
+                #     uCur = uEval(xCur)
+                #     xDef = xCur + uCur
+                #     all_dist = np.sqrt((xNP-xDef[0])**2 + (yNP-xDef[1])**2)
+                #     if xDef[2] <= zthickness+1e-6 and (np.any(all_dist <= npRad) or xDef[2] <= (-hNP+1e-6+zthickness)):
+                #         if mf_dirichlet[f] == 0: 
+                #             reinit = True
+                #             keepSwimming = True
+                #             mf_dirichlet[f] = 5
+                #     elif mf_dirichlet[f] == 5 and not (np.any(all_dist <= npRad) or xDef[2] <= (-hNP+1e-6+zthickness)):
+                #         reinit = True
+                #         keepSwimming = True
+                #         mf_dirichlet[f] = 0
+                #         domain_id[f] = 12
+                #     elif xDef[2] >= zRoof-zthickness and mf_dirichlet[f] != 6:
+                #         domain_id[f] = 4
+                #         reinit = True
+                #         mf_dirichlet[f] = 6
+                #         keepSwimming = True
+            return (reinit, keepSwimming, mf_dirichlet, domain_id)
+        reinit, keepSwimming, mf_dirichlet, domain_id = update_bcs(
+            fmixed, mf_dirichlet, domain_id, mf_surf, nanopillar_specs)
+     
         if reinit: # then solver needs to be updated
+            zDisplFloorExpr = Expression("-hNP-r2*(1-sqrt(1-pow(x[0]/r1,2)-pow(x[1]/r1,2)))", 
+                                         degree=1, hNP=hNP, r1=nucRad1, r2=nucRad2)
+            zDisplFloor = interpolate(zDisplFloorExpr, V)
             bc_nanopillar = DirichletBC(V1.sub(2), zDisplOuter, mf_dirichlet, 1)
+            bc_floor = DirichletBC(V1.sub(2), zDisplFloor, mf_dirichlet, 7)
             bc_nanopillar_inner = DirichletBC(V1.sub(2), zDisplInner, mf_dirichlet, 5)
             bc_upper = DirichletBC(V1.sub(2), zDisplUpper, mf_dirichlet, 4)
             bc_upper_inner = DirichletBC(V1.sub(2), zDisplUpperInner, mf_dirichlet, 6)
             if not np.isinf(zRoof):
-                bcs = [bc_nanopillar, bc_nanopillar_inner, bc_upper, 
-                    bc_upper_inner, bc_symm1_y, bc_symm2_x]
+                bcs = [bc_nanopillar, bc_floor, bc_upper, 
+                    bc_symm1_y, bc_symm2_x]
             else:
-                bcs = [bc_nanopillar, bc_nanopillar_inner, bc_symm1_y, bc_symm2_x]
+                bcs = [bc_nanopillar, bc_floor, bc_symm1_y, bc_symm2_x]
             if custom_solver:
                 problem, solver = init_custom_solver(Fvar, fmixed, u, p, bcs)
             else:
@@ -726,12 +712,30 @@ while kRamp[-1] < kMax: #min(u.vector()[V1.dofmap().dofs()[2:-1:3]]) > -zIndentM
         if kRamp[-1] < kMax:
             kRamp.append(min([kRamp[-1]+kInc, kMax]))
             pRamp.append(pMax)
+        # elif hNP < hNPMax:
+        #     kRamp.append(kMax)
+        #     pRamp.append(pMax)
+        #     hNP = hNPMax
+        #     nanopillar_specs["hNP"] = hNP
+        #     reinit, keepSwimming, mf_dirichlet, domain_id = update_bcs(
+        #         fmixed, mf_dirichlet, domain_id, mf_surf, nanopillar_specs)
+        #     if reinit: # then solver needs to be updated
+        #         zDisplFloorExpr = Expression("-hNP-r2*(1-sqrt(1-pow(x[0]/r1,2)-pow(x[1]/r1,2)))", 
+        #                                  degree=1, hNP=hNP, r1=nucRad1, r2=nucRad2)
+        #         zDisplFloor = interpolate(zDisplFloorExpr, V)
+        #         bc_nanopillar = DirichletBC(V1.sub(2), zDisplOuter, mf_dirichlet, 1)
+        #         bc_floor = DirichletBC(V1.sub(2), zDisplFloor, mf_dirichlet, 7)
+        #         bcs = [bc_nanopillar, bc_floor, bc_symm1_y, bc_symm2_x]
+        #         if custom_solver:
+        #             problem, solver = init_custom_solver(Fvar, fmixed, u, p, bcs)
+        #         else:
+        #             solver = init_solver(Fvar, fmixed, bcs, Jvar)
         else:
             break # then done with this simulation
     else:
         pRamp.append(min([pRamp[-1]+dpress, pMax]))
         kRamp.append(kMin)   
-    u_file.write(fmixed.sub(0), pRamp[-2]+kRamp[-2])
+    u_file.write(fmixed.sub(0), idx)
     if len(fmixed.sub(0).vector()) == len(u_prev.vector()):
         u_prev.vector()[:] = fmixed.sub(0).vector()[:]
         u_prev.vector().apply("insert")
@@ -745,7 +749,7 @@ while kRamp[-1] < kMax: #min(u.vector()[V1.dofmap().dofs()[2:-1:3]]) > -zIndentM
     a_vector_new = J * dot(normals, inv(F))
     a_vector_new = project(a_vector_new, V_vector)
     a_vector.assign(a_vector_new)
-    a_file.write(a_vector, pRamp[-1]+kRamp[-1])
+    a_file.write(a_vector, idx)
 
     # save relevant vol and SAs
     inner_SA.append(assemble(a_scalar*ds_integrate(12))/inner_SA_ref)
