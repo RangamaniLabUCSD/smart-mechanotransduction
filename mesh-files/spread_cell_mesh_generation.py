@@ -7,7 +7,294 @@ import pathlib
 import numpy as np
 import dolfin as d
 from mpi4py import MPI
-from smart.mesh_tools import implicit_curve, gmsh_to_dolfin, facet_topology
+from smart.mesh_tools import implicit_curve, gmsh_to_dolfin, facet_topology, compute_curvature
+
+def assemble_ne_pm(
+        ne_mesh: d.Mesh,
+        pm_mesh: d.Mesh,
+        hEdge: float = 0.5,
+        hInnerEdge: float = 0.5,
+        hNP: float = 0.3,
+        interface_marker: int = 12,
+        outer_marker: int = 10,
+        inner_vol_tag: int = 2,
+        outer_vol_tag: int = 1,
+        nanopillars: Tuple[float, float, float] = [0, 0, 0],
+        return_curvature: bool = True,
+        sym_fraction: float = 0.25,
+        use_tmp: bool = False,
+        verbose: bool = False,
+):
+
+    if isinstance(nanopillars, list):
+        nanopillar_rad, nanopillar_height, nanopillar_spacing = nanopillars[:]
+        nanopillar_logic = np.all(np.array(nanopillars) != 0)
+    elif isinstance(nanopillars, dict):
+        nanopillar_rad = nanopillars["rNP"]
+        nanopillar_height = nanopillars["hNP"]
+        nanopillar_spacing = nanopillars["pNP"]
+        nanopillar_logic = np.all(np.array([nanopillar_rad, nanopillar_height, nanopillar_spacing]) != 0)
+    else:
+        raise ValueError("Format of nanopillar specs not recognized")
+    # now load into gmsh and create full mesh
+    import gmsh
+    gmsh.initialize()
+    gmsh.option.setNumber("General.Terminal", int(verbose))
+    gmsh.model.add("ne_and_pm")
+    zHalf = np.max(pm_mesh.coordinates()[:,2])/2
+    zHalfNE = (np.min(ne_mesh.coordinates()[:,2]) + np.max(pm_mesh.coordinates()[:,2]))/2
+
+    for v in d.vertices(pm_mesh):
+        xcur = [v.x(0), v.x(1), v.x(2)]
+        gmsh.model.geo.add_point(xcur[0], xcur[1], xcur[2], tag=v.index())
+        if xcur[0] < 1e-6 and xcur[1] < 1e-6:
+            if xcur[2] > zHalf:
+                top_point_PM = v.index()
+            else:
+                bottom_point_PM = v.index()
+    
+    vOffset = gmsh.model.geo.get_max_tag(0)+1
+    for v in d.vertices(ne_mesh):
+        xcur = [v.x(0), v.x(1), v.x(2)]
+        gmsh.model.geo.add_point(xcur[0], xcur[1], xcur[2], tag=v.index()+vOffset)
+        if xcur[0] < 1e-6 and xcur[1] < 1e-6:
+            if xcur[2] > zHalfNE:
+                top_point_NE = v.index()+vOffset
+            else:
+                bottom_point_NE = v.index()+vOffset
+
+    front_edge_PM = []
+    back_edge_PM = []
+    for f in d.facets(pm_mesh):
+        idx = f.entities(0) # vertices
+        gmsh.model.geo.add_line(idx[0], idx[1], tag=f.index())
+        if sym_fraction == 0.125:
+            if np.isclose(f.midpoint().y(), 0.0):
+                front_edge_PM.append(f.index())
+            elif np.isclose(np.arctan2(f.midpoint().y(),f.midpoint().x()), 2*sym_fraction*np.pi):
+                back_edge_PM.append(f.index())
+        elif sym_fraction == 0.25:
+            if np.isclose(f.midpoint().y(), 0.0):
+                front_edge_PM.append(f.index())
+            elif np.isclose(f.midpoint().x(), 0.0):
+                back_edge_PM.append(f.index())
+        else:
+            raise ValueError("sym_fraction must be 1/4 or 1/8")
+    
+    front_edge_NE = []
+    back_edge_NE = []
+    fOffset = gmsh.model.geo.get_max_tag(1)+1
+    for f in d.facets(ne_mesh):
+        idx = f.entities(0) # vertices
+        gmsh.model.geo.add_line(idx[0]+vOffset, idx[1]+vOffset, 
+                                tag=f.index()+fOffset)
+        if sym_fraction == 0.125:
+            if np.isclose(f.midpoint().y(), 0.0):
+                front_edge_NE.append(f.index()+fOffset)
+            elif np.isclose(np.arctan2(f.midpoint().y(),f.midpoint().x()), 2*sym_fraction*np.pi):
+                back_edge_NE.append(f.index()+fOffset)
+        elif sym_fraction == 0.25:
+            if np.isclose(f.midpoint().y(), 0.0):
+                front_edge_NE.append(f.index()+fOffset)
+            elif np.isclose(f.midpoint().x(), 0.0):
+                back_edge_NE.append(f.index()+fOffset)
+        else:
+            raise ValueError("sym_fraction must be 1/4 or 1/8")
+    
+    symm_axis_top = gmsh.model.geo.add_line(top_point_PM, top_point_NE)
+    symm_axis_middle = gmsh.model.geo.add_line(top_point_NE, bottom_point_NE)
+    symm_axis_bottom = gmsh.model.geo.add_line(bottom_point_NE, bottom_point_PM)
+    
+    pm_surf = []
+    for c in d.cells(pm_mesh):
+        idx = c.entities(1) # edges
+        cur_loop = gmsh.model.geo.add_curve_loop([idx[0],idx[1],idx[2]], reorient=True)
+        pm_surf.append(gmsh.model.geo.add_plane_surface([cur_loop]))
+    
+    ne_surf = []
+    for c in d.cells(ne_mesh):
+        idx = c.entities(1) # edges
+        cur_loop = gmsh.model.geo.add_curve_loop(
+            [idx[0]+fOffset,idx[1]+fOffset,idx[2]+fOffset], reorient=True)
+        ne_surf.append(gmsh.model.geo.add_plane_surface([cur_loop]))
+
+    front_loop = gmsh.model.geo.add_curve_loop(
+        [*front_edge_PM, symm_axis_top, *front_edge_NE, symm_axis_bottom], reorient=True)
+    front_surf = gmsh.model.geo.add_plane_surface([front_loop])
+    back_loop = gmsh.model.geo.add_curve_loop(
+        [*back_edge_PM, symm_axis_top, *back_edge_NE, symm_axis_bottom], reorient=True)
+    back_surf = gmsh.model.geo.add_plane_surface([back_loop])
+    pm_shell = gmsh.model.geo.add_surface_loop([front_surf, back_surf, *pm_surf, *ne_surf])
+    pm_vol = gmsh.model.geo.add_volume([pm_shell])
+
+    front_loop_ne = gmsh.model.geo.add_curve_loop(
+        [*front_edge_NE, symm_axis_middle], reorient=True)
+    front_surf_ne = gmsh.model.geo.add_plane_surface([front_loop_ne])
+    back_loop_ne = gmsh.model.geo.add_curve_loop(
+        [*back_edge_NE, symm_axis_middle], reorient=True)
+    back_surf_ne = gmsh.model.geo.add_plane_surface([back_loop_ne])
+    ne_shell = gmsh.model.geo.add_surface_loop([front_surf_ne, back_surf_ne, *ne_surf])
+    ne_vol = gmsh.model.geo.add_volume([ne_shell])
+
+    gmsh.model.geo.synchronize()
+
+    gmsh.model.add_physical_group(2, pm_surf, tag=outer_marker)
+    gmsh.model.add_physical_group(2, ne_surf, tag=interface_marker)
+    gmsh.model.add_physical_group(3, [pm_vol], tag=outer_vol_tag)
+    gmsh.model.add_physical_group(3, [ne_vol], tag=inner_vol_tag)
+
+    zMid = np.mean(ne_mesh.coordinates()[:,2])
+    rValsOuter = np.sqrt(pm_mesh.coordinates()[:,0]**2 + pm_mesh.coordinates()[:,1]**2)
+    zValsOuter = pm_mesh.coordinates()[:,2]
+    rValsInner = np.sqrt(ne_mesh.coordinates()[:,0]**2 + ne_mesh.coordinates()[:,1]**2)
+    zValsInner = ne_mesh.coordinates()[:,2]
+    if nanopillar_logic:
+        num_pillars = 2*np.ceil(np.max(rValsOuter)/nanopillar_spacing) + 1
+        rMax = nanopillar_spacing * np.ceil(np.max(rValsOuter)/nanopillar_spacing)
+        test_coords = np.linspace(-rMax, rMax, int(num_pillars))
+        xTest, yTest = np.meshgrid(test_coords, test_coords)
+        xTest = np.reshape(xTest, (len(xTest)**2))
+        yTest = np.reshape(yTest, (len(yTest)**2))
+    else:
+        xTest = []
+        yTest = []
+
+    ROuterVec = np.sqrt(rValsOuter**2 + (zValsOuter - zMid) ** 2)
+    RInnerVec = np.sqrt(rValsInner**2 + (zValsInner - zMid) ** 2)
+    maxOuterDim = max(ROuterVec)
+    maxInnerDim = max(RInnerVec)
+    
+    def meshSizeCallback(dim, tag, x, y, z, lc):
+        # mesh length is hEdge at the PM and hInnerEdge at the inner membrane
+        # between these, the value is interpolated based on the relative distance
+        # between the two membranes.
+        # Inside the inner shape, the value is interpolated between hInnerEdge
+        # and lc3, where lc3 = max(hInnerEdge, 0.2*maxInnerDim)
+        # if innerRad=0, then the mesh length is interpolated between
+        # hEdge at the PM and 0.2*maxOuterDim in the center
+        # hNP is also considered here (mesh resolution at nanopillars),
+        # weighted by how close the point is to the nanopillar surface
+        rCur = np.sqrt(x**2 + y**2)
+        RCur = np.sqrt(rCur**2 + (z - zMid) ** 2)
+        dist_to_outer = np.min(np.sqrt((rCur - rValsOuter) ** 2 + (z - zValsOuter) ** 2))
+        if nanopillar_logic:
+            xy_NP_dist = min(np.sqrt((x-xTest)**2 + (y-yTest)**2))
+            if xy_NP_dist < nanopillar_rad:
+                xy_NP_dist = 0
+            else:
+                xy_NP_dist -= nanopillar_rad
+            z_NP_dist = max([0, z - nanopillar_height])
+            dist_to_NP = np.sqrt(xy_NP_dist**2 + z_NP_dist**2)
+            hNPWeight = np.exp(-dist_to_NP / 2.5)
+        else:
+            hNPWeight = 0
+        
+        if len(rValsInner) == 0:
+            lc3 = 0.2 * maxOuterDim
+            dist_to_inner = RCur
+            in_outer = True
+        else:
+            inner_dist = np.sqrt((rCur - rValsInner) ** 2 + (z - zValsInner) ** 2)
+            dist_to_inner = min(inner_dist)
+            inner_idx = np.argmin(inner_dist)
+            inner_rad = RInnerVec[inner_idx]
+            R_rel_inner = RCur / inner_rad
+            lc3 = max(hInnerEdge, 0.2 * maxInnerDim)
+            in_outer = R_rel_inner > 1
+        lc1 = (1-hNPWeight)*hEdge + hNPWeight*hNP
+        lc2 = (1-hNPWeight)*hInnerEdge + hNPWeight*hNP
+        lc3 = (1-hNPWeight)*lc3 + hNPWeight*hNP
+        if in_outer:
+            lcTest = lc1 + (lc2 - lc1) * (dist_to_outer) / (dist_to_inner + dist_to_outer)
+        else:
+            lcTest = lc2 + (lc3 - lc2) * (1 - R_rel_inner)
+        return lcTest
+
+    gmsh.model.mesh.setSizeCallback(meshSizeCallback)
+    # set off the other options for mesh size determination
+    gmsh.option.setNumber("Mesh.MeshSizeExtendFromBoundary", 0)
+    gmsh.option.setNumber("Mesh.MeshSizeFromPoints", 0)
+    gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 0)
+    # this changes the algorithm from Frontal-Delaunay to Delaunay,
+    # which may provide better results when there are larger gradients in mesh size
+    gmsh.option.setNumber("Mesh.Algorithm", 5)
+
+    gmsh.model.mesh.generate(3)
+    rank = MPI.COMM_WORLD.rank
+    if use_tmp:
+        tmp_folder = pathlib.Path(f"/root/tmp/tmp_3dcell_{rank}")
+    else:
+        tmp_folder = pathlib.Path(f"tmp_3dcell_{rank}")
+    tmp_folder.mkdir(exist_ok=True)
+    gmsh_file = tmp_folder / "3dcell.msh"
+    gmsh.write(str(gmsh_file))
+    gmsh.finalize()
+
+    # return dolfin mesh of max dimension (parent mesh) and marker functions mf2 and mf3
+    dmesh, mf2, mf3 = gmsh_to_dolfin(str(gmsh_file), tmp_folder, 3)
+    # remove tmp mesh and tmp folder
+    gmsh_file.unlink(missing_ok=False)
+    tmp_folder.rmdir()
+    # assign substrate markers
+    substrate_markers = d.MeshFunction("size_t", dmesh, 2)
+    if isinstance(nanopillars, dict):
+        contactRad = nanopillars["contactRad"]
+        edgeThresh = hEdge/100
+    else:
+        contactRad = np.max(np.sqrt(dmesh.coordinates()[:,0]**2 + dmesh.coordinates()[:,1]**2))
+        edgeThresh = hEdge/10
+    xCurv = 0.2
+    xSteric = 0.05
+    zOffset = nanopillar_height
+    for f in d.facets(dmesh):
+        topology, cellIndices = facet_topology(f, mf3)
+        if topology == "boundary":
+            # test if it is on the outward surface (not substrate)
+            rCur = np.sqrt(f.midpoint().x()**2 + f.midpoint().y()**2)
+            zCur = f.midpoint().z()
+            thetaCur = np.arctan2(f.midpoint().y(), f.midpoint().x())
+            if zCur == 0:
+                substrate_markers.set_value(f.index(), outer_marker)
+            elif not(sym_fraction != 1 and (
+                np.isclose(thetaCur, 0.0, atol=1e-4) or np.isclose(thetaCur, 2*np.pi*sym_fraction, atol=1e-4))):
+                if nanopillar_logic:
+                    if rCur < contactRad - edgeThresh and zCur < zOffset + hEdge/100:
+                        substrate_markers.set_value(f.index(), outer_marker)
+
+    curv_markers = compute_curvature(dmesh, mf2, mf3, [10,12], [1,2])
+    if return_curvature:
+        # manually set curvatures on the substrate (these are known)
+        for f in d.facets(dmesh):
+            if substrate_markers.array()[f.index()] == outer_marker:
+                for v in d.vertices(f):
+                    # explictly set curvature for membrane on nanopillars (or set to zero for no nanopillars)
+                    zVal = v.midpoint().z()
+                    if zVal >= nanopillar_height:
+                        curv_markers.set_value(v.index(), 0.0)
+                    elif zVal > nanopillar_height - xSteric: # curved from cyl to top
+                        cosCur = (zVal - (nanopillar_height-xSteric))/xSteric
+                        sinCur = np.sqrt(1 - cosCur**2)
+                        cm = 1/xSteric
+                        cp = sinCur / (nanopillar_rad + xSteric*sinCur)
+                        rVal = nanopillar_rad + xSteric*sinCur
+                        cpAlt = (rVal - nanopillar_rad) / (rVal*xSteric)
+                        curv_markers.set_value(v.index(), -(cm+cp)/2) 
+                    elif zVal > xCurv: # cylinder
+                        curv_markers.set_value(v.index(), -0.5/nanopillar_rad)
+                    elif zVal > 0: # curved to substrate
+                        cosCur = (xCurv - zVal)/xCurv
+                        sinCur = np.sqrt(1 - cosCur**2)
+                        cm = 1/xCurv
+                        cp = -sinCur / (nanopillar_rad + xSteric + xCurv*(1-sinCur))
+                        rVal = nanopillar_rad + xSteric + xCurv - xCurv*sinCur
+                        cpAlt = (rVal - (nanopillar_rad + xSteric + xCurv)) / (rVal*xCurv)
+                        curv_markers.set_value(v.index(), (cm+cp)/2)
+                    else: # substrate
+                        curv_markers.set_value(v.index(), 0.0)
+                    
+        return (dmesh, mf2, mf3, substrate_markers, curv_markers)
+    else:
+        return (dmesh, mf2, mf3, substrate_markers)
 
 def create_3dcell(
     contactRad: float = 10.0,
@@ -26,6 +313,7 @@ def create_3dcell(
     sym_fraction: float = 1.0,
     nuc_compression: float = 0.0,
     no_nuc: bool = False,
+    no_np: bool = False,
     shape_coords: list = [],
 ) -> Tuple[d.Mesh, d.MeshFunction, d.MeshFunction, d.MeshFunction, 
            d.MeshFunction, d.Function, d.Function]:
@@ -137,7 +425,7 @@ def create_3dcell(
     cell_plane_tag = gmsh.model.occ.add_plane_surface([outer_loop_tag])
     outer_shape = gmsh.model.occ.revolve([(2, cell_plane_tag)], 0, 0, 0, 0, 0, 1, 2*np.pi*sym_fraction)
     
-    if np.all(np.array(nanopillars) != 0):
+    if np.all(np.array(nanopillars) != 0) and not no_np:
         zero_idx = np.nonzero(zValsOuter <= 0.0)
         num_pillars = 2*np.ceil(rValsOuter[zero_idx]/nanopillar_spacing) + 1
         rMax = nanopillar_spacing * np.ceil(rValsOuter[zero_idx]/nanopillar_spacing)
@@ -214,7 +502,7 @@ def create_3dcell(
             facet_tags.append(facets[i][1])
         gmsh.model.add_physical_group(2, facet_tags, tag=outer_marker)
     else:
-        if np.all(np.array(nanopillars) != 0):
+        if np.all(np.array(nanopillars) != 0) and not no_np:
             xMax = np.ceil(aInner / nanopillar_spacing) * nanopillar_spacing
             xNP = np.arange(-xMax, xMax+1e-12, nanopillar_spacing)
             yNP = np.arange(-xMax, xMax+1e-12, nanopillar_spacing)
@@ -356,7 +644,7 @@ def create_3dcell(
         RCur = np.sqrt(rCur**2 + (z - zMid) ** 2)
         outer_dist = np.sqrt((rCur - rValsOuter) ** 2 + (z - zValsOuter) ** 2)
         np.append(outer_dist, z)  # include the distance from the substrate
-        if np.all(np.array(nanopillars) != 0):
+        if np.all(np.array(nanopillars) != 0) and not no_np:
             xy_NP_dist = min(np.sqrt((x-xTest)**2 + (y-yTest)**2))
             if xy_NP_dist < nanopillar_rad:
                 xy_NP_dist = 0
@@ -438,8 +726,8 @@ def create_3dcell(
                 mf2.set_value(f.index(), 0)
             else: #then either on a nanopillar or outer surface
                 mf2.set_value(f.index(), outer_marker)
-                if np.all(np.array(nanopillars) != 0):
-                    if rCur < contactRad - xCurv + hEdge/5 and zCur < zOffset + hEdge/100:
+                if np.all(np.array(nanopillars) != 0) and not no_np:
+                    if rCur < contactRad - hEdge/100 and zCur < zOffset + hEdge/100:
                         substrate_markers.set_value(f.index(), outer_marker)
 
     if return_curvature:
@@ -595,6 +883,7 @@ def NE_mesh(
     use_tmp: bool = False,
     sym_fraction: float = 1.0,
     NE_layers: int = 1,
+    hTop: float = 0.6,
 ) -> Tuple[d.Mesh, d.MeshFunction, d.MeshFunction]:
     """
     Creates a 3d cell mesh.
@@ -697,7 +986,7 @@ def NE_mesh(
     two_shapes, (outer_shape_map, inner_shape_map) = gmsh.model.occ.fragment(
         [(3, outer_shape_tags[0])], [(3, inner_shape_tags[0])]
     )
-    outer_shape_tags = inner_shape_tags
+    # outer_shape_tags = inner_shape_tags
 
     gmsh.model.occ.synchronize()
 
@@ -709,15 +998,35 @@ def NE_mesh(
         # embed additional points on boundary for mesh refinement
     # gmsh.model.occ.synchronize()
     # outer_shell_init = gmsh.model.getBoundary([(3,outer_shape_tags[0])], oriented=False)
-    embed_points = []
+    # embed_points = []
+    # center_pt = gmsh.model.occ.add_point(0.0, 0.0, zRad)
     for j in range(NE_layers-1):
         cur_rthickness = (j+1)*thickness[0]/NE_layers
         cur_zthickness = (j+1)*thickness[1]/NE_layers
-        inner_top = gmsh.model.occ.add_point(0.02, 0.0, 2*zRad-cur_zthickness)
-        inner_bottom = gmsh.model.occ.add_point(0.02, 0.0, cur_zthickness)
-        embed_points.append((0, inner_top))
-        embed_points.append((0, inner_bottom))
-    gmsh.model.occ.fragment(outer_shell, embed_points)
+        # rRadCur = rRad - cur_rthickness
+        # zRadCur = zRad - cur_zthickness
+        # xval = 0.05
+        # yval = 0.005
+        # xRight = rRadCur/np.sqrt(1+(yval/xval)**2)
+        # yRight = rRadCur/np.sqrt(1+(xval/yval)**2)
+        # zvaltop = zRad + zRadCur*np.sqrt(1 - (xval**2+yval**2)/rRadCur**2)
+        # zvalbottom = zRad - zRadCur*np.sqrt(1 - (xval**2+yval**2)/rRadCur**2)
+        # layer_top = gmsh.model.occ.add_point(xval, yval, zvaltop)
+        # layer_middle = gmsh.model.occ.add_point(xRight, yRight, zRad)
+        # layer_bottom = gmsh.model.occ.add_point(xval, yval, zvalbottom)
+        # layer_edge = gmsh.model.occ.add_ellipse_arc(layer_top, center_pt, layer_middle, layer_bottom)
+        d_angle = 0.02*np.pi/2
+        layer_edge = gmsh.model.occ.add_ellipse(0, 0, zRad, rRad-cur_rthickness, zRad-cur_zthickness, 
+                                            angle1=-np.pi/2 + d_angle, angle2=np.pi/2 - d_angle,
+                                            zAxis=[0,1,0], xAxis=[1,0,0])
+        gmsh.model.occ.rotate([(1, layer_edge)], 0, 0, 0, 0, 0, 1, d_angle)
+        layer_shape = gmsh.model.occ.revolve([(1, layer_edge)], 
+                                            0, 0, 0, 0, 0, 1, 2 * np.pi * sym_fraction - 2*d_angle)
+        gmsh.model.occ.fragment(outer_shape_map, layer_shape)
+        # embed_points.append((0, inner_top))
+        # embed_points.append((0, inner_bottom))
+    gmsh.model.occ.removeAllDuplicates()
+    gmsh.model.occ.synchronize()
     # outer_shell_init = fragment_out[0][0][1]
     
     # Add physical markers for facets
@@ -735,7 +1044,8 @@ def NE_mesh(
     # Physical markers for volumes
     all_volumes = []
     for i in range(len(outer_shape_map)):
-        all_volumes.append(outer_shape_map[i][1])
+        if outer_shape_map[i][0] == 3:
+            all_volumes.append(outer_shape_map[i][1])
 
     inner_volume = [tag[1] for tag in inner_shape_map]
     outer_volume = []
@@ -774,7 +1084,7 @@ def NE_mesh(
             lcTest = lc2 + (lc3 - lc2) * (1 - R_rel_inner)
         # also scale by distance from z = 0 axis
         zWeight = (1 - np.tanh((z-zRad)/2))/2
-        lcTest = (1-zWeight)*2*lcTest + zWeight*lcTest/2
+        lcTest = (1-zWeight)*hTop + zWeight*lcTest
         return lcTest
 
     gmsh.model.mesh.setSizeCallback(meshSizeCallback)
@@ -807,23 +1117,53 @@ def NE_mesh(
     rad_eff2 = ((rRad-thickness[0])**2 * (zRad-thickness[1]))**(1/3)
     thickness_thresh = ((rad_eff1 - rad_eff2) / NE_layers)
     mf2 = d.MeshFunction("size_t", dmesh, 2, 0)
-    class OuterSurf(d.SubDomain):
-        def inside(self, x, on_boundary):
-            bound_val = pow(pow(x[0]/rRad,2) + pow(x[1]/rRad,2) + 
-                        pow((x[2]-zRad)/zRad,2),0.5)
-            cutoffFrac = 1-0.5*thickness_thresh/rad_eff1
-            return bound_val > cutoffFrac and on_boundary
-    class InnerSurf(d.SubDomain):
-        def inside(self, x, on_boundary):
-            bound_val = pow(pow(x[0]/(rRad-thickness[0]),2) + pow(x[1]/(rRad-thickness[0]),2) +
-                        pow((x[2]-zRad)/(zRad-thickness[1]),2),0.5)
-            cutoffFrac1 = 1+0.5*thickness_thresh/rad_eff2
-            cutoffFrac2 = 1-0.5*thickness_thresh/rad_eff2
-            return  bound_val < cutoffFrac1 and bound_val > cutoffFrac2
-    outerSurf = OuterSurf()
-    innerSurf = InnerSurf()
-    outerSurf.mark(mf2, outer_marker)
-    innerSurf.mark(mf2, interface_marker)
+    # class OuterSurf(d.SubDomain):
+    #     def inside(self, x, on_boundary):
+    #         bound_val = pow(pow(x[0]/rRad,2) + pow(x[1]/rRad,2) + 
+    #                     pow((x[2]-zRad)/zRad,2),0.5)
+    #         cutoffFrac = 0.99#1-0.95*thickness_thresh/rad_eff1
+    #         return bound_val > cutoffFrac and on_boundary
+    # class OuterSurf(d.SubDomain):
+    #     def inside(self, x, on_boundary):
+    #         if sym_fraction == 1:
+    #             return on_boundary 
+    #         elif sym_fraction == 1/2:
+    #             return on_boundary and not x[0]==0
+    #         elif sym_fraction == 1/4:
+    #             return on_boundary and not (x[0]==0 or x[1]==0)
+    #         else:
+    #             thetaCur = np.arctan2(x[1], x[0])
+    #             return (on_boundary and not 
+    #                     (x[0]==0 or np.isclose(thetaCur,2*np.pi*sym_fraction)))
+    # class InnerSurf(d.SubDomain):
+    #     def inside(self, x, on_boundary):
+
+    #         bound_val = pow(pow(x[0]/(rRad-thickness[0]),2) + pow(x[1]/(rRad-thickness[0]),2) +
+    #                     pow((x[2]-zRad)/(zRad-thickness[1]),2),0.5)
+    #         cutoffFrac1 = 1.01#1+0.95*thickness_thresh/rad_eff2
+    #         cutoffFrac2 = 0.99#1-0.95*thickness_thresh/rad_eff2
+    #         return  bound_val < cutoffFrac1 and bound_val > cutoffFrac2
+    # outerSurf = OuterSurf()
+    # innerSurf = InnerSurf()
+    # outerSurf.mark(mf2, outer_marker)
+    # innerSurf.mark(mf2, interface_marker)
+    for f in d.facets(dmesh):
+        f_type = facet_topology(f, mf3)[0]
+        if f_type == "interface":
+            mf2[f] = interface_marker
+        elif f_type == "boundary":
+            if sym_fraction == 1:
+                mf2[f] = outer_marker
+            elif sym_fraction == 1/2:
+                if f.midpoint().x() > 1e-6:
+                    mf2[f] = outer_marker
+            elif sym_fraction == 1/4:
+                if f.midpoint().x() > 1e-6 and f.midpoint().y() > 1e-6:
+                    mf2[f] = outer_marker
+            else:
+                thetaCur = np.arctan2(f.midpoint().y(), f.midpoint().x())
+                if f.midpoint().x() > 1e-6 and thetaCur < 0.999*2*np.pi*sym_fraction:
+                    mf2[f] = outer_marker
 
     return (dmesh, mf2, mf3)
 

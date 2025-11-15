@@ -5,6 +5,8 @@ import dolfin as d
 import numpy as np
 from smart import mesh_tools
 
+here = Path(__file__).parent.absolute()
+sys.path.append((here / ".." / "model-files").as_posix())
 from mech_parser_args import (
     add_preprocess_mech_mesh_arguments,
 )
@@ -21,12 +23,10 @@ def main(
     sym_fraction: float = 1/8,
     no_nuc: bool = False
 ):
-    here = Path(__file__).parent.absolute()
-    sys.path.append((here / ".." / "utils").as_posix())
 
     import spread_cell_mesh_generation as mesh_gen
 
-    hNP = hEdge * 0.3
+    hNP = hEdge * 0.5
     nanopillars = [nanopillar_radius, nanopillar_height, nanopillar_spacing]
     cell_mesh, facet_markers, cell_markers, substrate_markers, curv_markers, u_nuc, a_nuc = mesh_gen.create_3dcell(
                                                                         contactRad=contact_rad,

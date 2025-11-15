@@ -28,6 +28,14 @@ commands = {
         msg="Run nuclear mechanics simulation",
         script=runner.nuc_mechanics
     ),
+    "mechanotransduction_coupled": Command(
+        msg="Run coupled mechanotransduction-mechanics simulation",
+        script=runner.coupled_example
+    ),
+    "mechanotransduction_coupled_minimal": Command(
+        msg="Run minimal coupled mechanotransduction-mechanics simulation",
+        script=runner.minimal_coupled_example
+    ),
 }
 
 def main():
