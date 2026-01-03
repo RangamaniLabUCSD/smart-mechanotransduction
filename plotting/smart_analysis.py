@@ -239,7 +239,8 @@ def analyze_all(
             continue
         find_mesh = len(test_array) == np.array(child_mesh_len)
         if len(np.nonzero(find_mesh)[0]) != 1:
-            raise ValueError("Could not identify submesh")
+            print("Warning: Could not identify submesh")
+            continue
         else:
             cur_mesh = child_meshes[np.nonzero(find_mesh)[0][0]]
 

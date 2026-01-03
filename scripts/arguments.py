@@ -24,6 +24,18 @@ def nuc_mechanics(parser: argparse.ArgumentParser):
 
     mech_parser_args.add_nucmech_arguments(parser)
 
+def coupled_example(parser: argparse.ArgumentParser):
+    sys.path.insert(0, (here / ".." / "model-files").as_posix())
+    import mech_parser_args
+
+    mech_parser_args.add_coupled_arguments(parser)
+
+# def coupled_minimal_example(parser: argparse.ArgumentParser):
+#     sys.path.insert(0, (here / ".." / "model-files").as_posix())
+#     import mech_parser_args
+
+#     mech_parser_args.add_coupled_minimal_arguments(parser)
+
 def preprocess_mech_mesh(parser: argparse.ArgumentParser):
     sys.path.insert(0, (here / ".." / "model-files").as_posix())
     import mech_parser_args
@@ -63,5 +75,20 @@ def setup_parser() -> argparse.ArgumentParser:
         "mechanotransduction_gq", help="Run mechanotransduction_gq simulation"
     )
     mechanotransduction_example_gq(mechanotransduction_gq_parser)
+
+    nuc_mechanics_parser = subparsers.add_parser(
+        "nuc_mechanics", help="Run nuclear mechanics simulation"
+    )
+    nuc_mechanics(nuc_mechanics_parser)
+
+    coupled_parser = subparsers.add_parser(
+        "mechanotransduction_coupled", help="Run coupled mechanotransduction simulation"
+    )
+    coupled_example(coupled_parser)
+
+    # minimal_coupled_parser = subparsers.add_parser(
+    #     "mechanotransduction_coupled_minimal", help="Run minimal coupled mechanotransduction simulation"
+    # )
+    # coupled_minimal_example(minimal_coupled_parser)
 
     return parser

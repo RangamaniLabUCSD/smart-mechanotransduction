@@ -14,7 +14,7 @@ tscc_template = dedent(
 #SBATCH --error=%j-%x-stderr.txt
 #SBATCH --account=csd786
 #SBATCH --qos=hcp-csd765
-#SBATCH --mem=4G
+#SBATCH --mem=10G
 
 module load singularitypro/3.11
 module load mpich/ge/gcc/64/3.4.2
@@ -79,6 +79,7 @@ def preprocess_mech_mesh(
     contact_rad: float,
     nuc_compression: float,
     sym_fraction: float,
+    no_nuc: bool,
     **kwargs,
 ):
     args = [
@@ -102,8 +103,11 @@ def preprocess_mech_mesh(
         sym_fraction,
     ]
 
+    if no_nuc:
+        args.append("--no-nuc")
+
     script = (
-        (here / ".." / "model-files" / "pre_process_mesh.py")
+        (here / ".." / "mesh-files" / "pre_process_mesh.py")
         .absolute()
         .resolve()
         .as_posix()
@@ -252,6 +256,8 @@ def nuc_mechanics(
     nanopillar_radius: float = 0.25,
     nanopillar_height: float = 1.0,
     nanopillar_spacing: float = 2.5,
+    contactRad: float = 17.45,
+    nuc_only: bool = False,
     **kwargs,
 ):
     args = [
@@ -271,19 +277,105 @@ def nuc_mechanics(
         nanopillar_height,
         "--nanopillar-spacing",
         nanopillar_spacing,
-        "--nuc-compression",
+        "--contactRad",
+        contactRad,
     ]
+
+    if nuc_only:
+        args.append("--nuc-only")
 
     args.extend(["--outdir", Path(outdir).as_posix()])
 
     script = (
-        (here / ".." / "model-files" / "nuclear_deformation_mixed3d.py")
+        (here / ".." / "model-files" / "nuc_mech_only.py")
         .absolute()
         .resolve()
         .as_posix()
     )
     run(
         job_name="nucmech",
+        args=args,
+        dry_run=dry_run,
+        script=script,
+        submit_tscc=submit_tscc,
+    )
+
+def coupled_example(
+    mesh_folder: Path,
+    outdir: Path,
+    time_step: float,
+    e_val: float,
+    dry_run: bool = False,
+    submit_tscc: bool = False,
+    curv_sens: float = 2.0,
+    npc_slope: float = 0.0,
+    a0_npc: float = 0.0,
+    WASP_rate: float = 0.0,
+    endo_rate: float = 1.0,
+    force_val: float = 0.0,
+    t0_deform: float = 100.0,
+    actin_boost: float = 20.0,
+    actin_decay: float = 0.2,
+    lamin_diff: float = 0.001,
+    lamin_abundance: float = 1.0,
+    k_phos: float = 0.001,
+    phiE: float = 0.0,
+    nanopillar_radius: float = 0.25,
+    nanopillar_spacing: float = 2.5,
+    nanopillar_height: float = 1.0,
+    **kwargs,
+):
+    args = [
+        "--mesh-folder",
+        Path(mesh_folder).as_posix(),
+        "--time-step",
+        time_step,
+        "--e-val",
+        e_val,
+        "--curv-sens",
+        curv_sens,
+        "--npc-slope",
+        npc_slope,
+        "--a0-npc",
+        a0_npc,
+        "--WASP-rate",
+        WASP_rate,
+        "--endo-rate",
+        endo_rate,
+        "--force-val",
+        force_val,
+        "--t0-deform",
+        t0_deform,
+        "--actin-boost",
+        actin_boost,
+        "--actin-decay",
+        actin_decay,
+        "--lamin-diff",
+        lamin_diff,
+        "--lamin-abundance",
+        lamin_abundance,
+        "--k-phos",
+        k_phos,
+        "--phiE",
+        phiE,
+        "--nanopillar-radius",
+        nanopillar_radius,
+        "--nanopillar-height",
+        nanopillar_height,
+        "--nanopillar-spacing",
+        nanopillar_spacing,
+    ]
+
+    args.extend(["--outdir", Path(outdir).as_posix()])
+
+    script = (
+        (here / ".." / "model-files" / "mechanotransduction_laminonly.py")
+        .absolute()
+        .resolve()
+        .as_posix()
+    )
+    run(
+        job_name="mechanotransduction",
         args=args,
         dry_run=dry_run,
         script=script,
