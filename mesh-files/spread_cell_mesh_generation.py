@@ -883,7 +883,7 @@ def NE_mesh(
     use_tmp: bool = False,
     sym_fraction: float = 1.0,
     NE_layers: int = 1,
-    hTop: float = 0.6,
+    hTop: float = 0.0,
 ) -> Tuple[d.Mesh, d.MeshFunction, d.MeshFunction]:
     """
     Creates a 3d cell mesh.
@@ -933,7 +933,9 @@ def NE_mesh(
     if np.isclose(hEdge, 0):
         hEdge = 0.1 * maxOuterDim
     if np.isclose(hInnerEdge, 0):
-        hInnerEdge = 0.2 * maxInnerDim
+        hInnerEdge = 0.1 * maxInnerDim
+    if np.isclose(hTop, 0):
+        hTop = 0.2 * maxInnerDim
     if rRad-thickness[0] <= 0 or zRad-thickness[1] <= 0:
         raise ValueError('Nuclear radius must be greater than thickness of NE')
     if np.isclose(thickness[0], 0) or np.isclose(thickness[1], 0):
@@ -1188,11 +1190,12 @@ def create_substrate(
     nanopillar_spacing = nanopillars[2]
     gmsh.initialize()
     gmsh.option.setNumber("General.Terminal", int(verbose))
-    gmsh.model.add("3dcell")
+    gmsh.model.add("substrate")
 
     # first add outer body and revolve
     outer_shape = gmsh.model.occ.add_box(-LBox/2,-LBox/2,-TBox,LBox,LBox,TBox)
     outer_shape = [(3, outer_shape)]
+    # outer_shape = []
     
     if np.all(np.array(nanopillars) != 0):
         num_pillars = 2*np.floor(LBox/(2*nanopillar_spacing)) + 1
@@ -1210,6 +1213,7 @@ def create_substrate(
             keep_logic = np.logical_or(keep_logic1, keep_logic2)
             if keep_logic:
                 np_shape = gmsh.model.occ.add_cylinder(xTest[i], yTest[i], 0.0, 0, 0, nanopillar_height, nanopillar_rad)
+                # outer_shape.append((3, np_shape))
                 (outer_shape, outer_shape_map) = gmsh.model.occ.fuse(outer_shape, [(3, np_shape)])
                 outer_shape_list = []
 
@@ -1226,6 +1230,10 @@ def create_substrate(
     for i in range(len(facets)):
         facet_tags.append(facets[i][1])
     gmsh.model.add_physical_group(2, facet_tags, tag=outer_marker)
+    def meshSizeCallback(dim, tag, x, y, z, lc):
+        return hEdge
+
+    gmsh.model.mesh.setSizeCallback(meshSizeCallback)
 
     gmsh.model.mesh.generate(3)
     rank = MPI.COMM_WORLD.rank

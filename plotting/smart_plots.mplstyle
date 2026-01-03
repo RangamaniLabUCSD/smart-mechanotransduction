@@ -11,6 +11,7 @@ axes.spines.right: False
 legend.loc: best
 errorbar.capsize: 8
 font.family: sans-serif
+font.sans-serif: Arial
 legend.frameon: False
 savefig.dpi: 300
 savefig.format: png

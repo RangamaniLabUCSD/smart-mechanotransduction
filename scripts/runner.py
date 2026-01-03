@@ -287,59 +287,13 @@ def nuc_mechanics(
     args.extend(["--outdir", Path(outdir).as_posix()])
 
     script = (
-        (here / ".." / "model-files" / "nuclear_deformation_mixed3d.py")
+        (here / ".." / "model-files" / "nuc_mech_only.py")
         .absolute()
         .resolve()
         .as_posix()
     )
     run(
         job_name="nucmech",
-        args=args,
-        dry_run=dry_run,
-        script=script,
-        submit_tscc=submit_tscc,
-    )
-
-def minimal_coupled_example(
-    mesh_folder: Path,
-    outdir: Path,
-    time_step: float,
-    dry_run: bool = False,
-    submit_tscc: bool = False,
-    a0_npc: float = 0.0,
-    WASP_rate: float = 0.0,
-    force_val: float = 0.0,
-    t0_deform: float = 100.0,
-    npc_slope: float = 0.0,
-    **kwargs,
-):
-    args = [
-        "--mesh-folder",
-        Path(mesh_folder).as_posix(),
-        "--time-step",
-        time_step,
-        "--a0-npc",
-        a0_npc,
-        "--WASP-rate",
-        WASP_rate,
-        "--force-val",
-        force_val,
-        "--t0-deform",
-        t0_deform,
-        "--npc-slope",
-        npc_slope,
-    ]
-
-    args.extend(["--outdir", Path(outdir).as_posix()])
-
-    script = (
-        (here / ".." / "model-files" / "mechanotransduction_nuc_deform_minimal.py")
-        .absolute()
-        .resolve()
-        .as_posix()
-    )
-    run(
-        job_name="mechanotransduction",
         args=args,
         dry_run=dry_run,
         script=script,
@@ -360,6 +314,15 @@ def coupled_example(
     endo_rate: float = 1.0,
     force_val: float = 0.0,
     t0_deform: float = 100.0,
+    actin_boost: float = 20.0,
+    actin_decay: float = 0.2,
+    lamin_diff: float = 0.001,
+    lamin_abundance: float = 1.0,
+    k_phos: float = 0.001,
+    phiE: float = 0.0,
+    nanopillar_radius: float = 0.25,
+    nanopillar_spacing: float = 2.5,
+    nanopillar_height: float = 1.0,
     **kwargs,
 ):
     args = [
@@ -383,12 +346,30 @@ def coupled_example(
         force_val,
         "--t0-deform",
         t0_deform,
+        "--actin-boost",
+        actin_boost,
+        "--actin-decay",
+        actin_decay,
+        "--lamin-diff",
+        lamin_diff,
+        "--lamin-abundance",
+        lamin_abundance,
+        "--k-phos",
+        k_phos,
+        "--phiE",
+        phiE,
+        "--nanopillar-radius",
+        nanopillar_radius,
+        "--nanopillar-height",
+        nanopillar_height,
+        "--nanopillar-spacing",
+        nanopillar_spacing,
     ]
 
     args.extend(["--outdir", Path(outdir).as_posix()])
 
     script = (
-        (here / ".." / "model-files" / "mechanotransduction_nuc_deform.py")
+        (here / ".." / "model-files" / "mechanotransduction_laminonly.py")
         .absolute()
         .resolve()
         .as_posix()
@@ -400,7 +381,6 @@ def coupled_example(
         script=script,
         submit_tscc=submit_tscc,
     )
-
 
 
 def convert_notebooks(dry_run: bool = False, **kwargs):

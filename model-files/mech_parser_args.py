@@ -245,54 +245,39 @@ def add_coupled_arguments(parser: argparse.ArgumentParser) -> None:
         type=float,
         default=100.0,
     )
-
-def add_coupled_minimal_arguments(parser: argparse.ArgumentParser) -> None:
-    # List of minimal coupled model arguments:
-    #  (mesh-folder and outdir are provided as strings and converted to pathlib.Path when called as script)
-    #   - mesh-folder: pathlib path to current mesh folder 
-    #   - outdir: pathlib path to output folder for current simulation
-    #   - time-step: starting time step in s (float)
-    #   - a0-npc: stretch sensitivity parameter for NPCs (float)
-    #   - WASP-rate: rate of N-WASP mediated curvature-sensitive actin assembly at substrate (float)
     parser.add_argument(
-        "--mesh-folder",
-        type=Path,
-        default=Path.cwd().parent / "meshes" / "nanopillars_baseline" / "nanopillars_h1.0_p2.5_r0.25_cellRad17.45"
-    )
-    parser.add_argument(
-        "-o", "--outdir", type=Path, default=Path("results_mechanotransduction")
-    )
-    parser.add_argument(
-        "-dt",
-        "--time-step",
+        "--actin-boost",
         type=float,
-        default=0.01,
+        default=20.0,
     )
     parser.add_argument(
-        "--a0-npc",
+        "--actin-decay",
         type=float,
-        default=0.0,
+        default=0.2,
     )
     parser.add_argument(
-        "--npc-slope",
+        "--lamin-diff",
+        type=float,
+        default=0.001,
+    )
+    parser.add_argument(
+        "--lamin-abundance",
+        type=float,
+        default=1.0,
+    )
+    parser.add_argument(
+        "--k-phos",
+        type=float,
+        default=0.001,
+    )
+    parser.add_argument(
+        "--phiE",
         type=float,
         default=0.0,
     )
-    parser.add_argument(
-        "--WASP-rate",
-        type=float,
-        default=0.01,
-    )
-    parser.add_argument(
-        "--force-val",
-        type=float,
-        default=0.0,
-    )
-    parser.add_argument(
-        "--t0-deform",
-        type=float,
-        default=100.0,
-    )
+    parser.add_argument("--nanopillar-radius", type=float, default=0.25)
+    parser.add_argument("--nanopillar-height", type=float, default=1.0)
+    parser.add_argument("--nanopillar-spacing", type=float, default=2.5)
 
 
 def add_preprocess_mech_mesh_arguments(parser: argparse.ArgumentParser) -> None:
