@@ -147,6 +147,7 @@ def analyze_all(
     axisymm=False,
     subdomain=[],
     ind_files=False,
+    jacobians=False,
 ):
     """
     Function for post-processing of XDMF files written from SMART simulations
@@ -186,7 +187,20 @@ def analyze_all(
 
     results_file_list = []
     tVec = []
-    for file in os.listdir(results_path):
+    sorted_file_list = sorted(os.listdir(results_path),key=lambda v: v.upper())
+    jacobian_files = []
+    jacobian_lengths = []
+    if jacobians:
+        for file in sorted_file_list:
+            if "J_" in file and file.endswith(".h5"):
+                jacobian_files.append(file)
+                cur_file = d.HDF5File(comm, f"{results_path}/{file}", "r")
+                cur_array = d.Vector()
+                cur_file.read(cur_array, f"VisualisationVector/0", True)
+                cur_array = cur_array[:]
+                jacobian_lengths.append(len(cur_array))
+                
+    for file in sorted_file_list:
         # check the files which are end with specific extension
         if file.endswith(".h5") and "mesh" not in file:
             results_file_list.append(file)
@@ -243,6 +257,14 @@ def analyze_all(
             continue
         else:
             cur_mesh = child_meshes[np.nonzero(find_mesh)[0][0]]
+        if jacobians: 
+            find_jacobian = len(test_array) == np.array(jacobian_lengths)
+            if len(np.nonzero(find_jacobian)[0]) != 1:
+                print("Warning: Could not identify jacobian")
+                continue
+            else:
+                jfile = jacobian_files[np.nonzero(find_jacobian)[0][0]]
+                cur_jacobian_file = d.HDF5File(comm, f"{results_path}/{jfile}", "r")
 
         if len(subdomain) == 6:
             # then defines a box to specify region of integration [x0, y0, z0, x1, y1, z1]
@@ -269,11 +291,10 @@ def analyze_all(
         dvec = d.Function(Vcur)
         num_time_points = len(tVec)
         dof_map = d.dof_to_vertex_map(Vcur)[:]
-        if axisymm:
-            x_cur = d.SpatialCoordinate(cur_mesh)[0]
-            vol_cur = d.assemble_mixed(x_cur * dx_cur(1))
-        else:
-            vol_cur = d.assemble_mixed(1.0 * dx_cur(1))
+        x_cur = d.SpatialCoordinate(cur_mesh)[0]
+
+        if jacobians:
+            jvec = d.Function(Vcur)
 
         var_avg = []
 
@@ -283,6 +304,10 @@ def analyze_all(
                 cur_array = d.Vector()
                 cur_file.read(cur_array, f"VisualisationVector/{i}", True)
                 cur_array = cur_array[:]
+                if jacobians:
+                    cur_jacobian_array = d.Vector()
+                    cur_jacobian_file.read(cur_jacobian_array, f"VisualisationVector/{i}", True)
+                    cur_jacobian_array = cur_jacobian_array[:]
             except:
                 var_avg.append(0.0)
                 continue
@@ -290,16 +315,25 @@ def analyze_all(
             cur_array = cur_array[dof_map]
             dvec.vector().set_local(cur_array)
             dvec.vector().apply("insert")
+            if jacobians:
+                cur_jacobian_array = cur_jacobian_array[dof_map]
+                jvec.vector().set_local(cur_jacobian_array)
+                jvec.vector().apply("insert")
             if axisymm:
-                if vol_cur == 0:
-                    var_avg.append(np.nan)
+                if jacobians:
+                    jcur = jvec * x_cur
                 else:
-                    var_avg.append(d.assemble_mixed(dvec * x_cur * dx_cur(1)) / vol_cur)
+                    jcur = x_cur
             else:
-                if vol_cur == 0:
-                    var_avg.append(np.nan)
+                if jacobians:
+                    jcur = jvec
                 else:
-                    var_avg.append(d.assemble_mixed(dvec * dx_cur(1)) / vol_cur)
+                    jcur = d.Constant(1.0)
+            vol_cur = d.assemble_mixed(jcur * dx_cur(1))
+            if vol_cur == 0:
+                var_avg.append(np.nan)
+            else:
+                var_avg.append(d.assemble_mixed(dvec * jcur * dx_cur(1)) / vol_cur)
             print(f"Done with time step {i} for file {j}")
 
         results_stored.append(var_avg)
