@@ -6,17 +6,17 @@ import argparse
 here = Path(__file__).parent.absolute()
 
 
-def mechanotransduction_example(parser: argparse.ArgumentParser):
-    sys.path.insert(0, (here / ".." / "model-files").as_posix())
-    import mech_parser_args
+# def mechanotransduction_example(parser: argparse.ArgumentParser):
+#     sys.path.insert(0, (here / ".." / "model-files").as_posix())
+#     import mech_parser_args
 
-    mech_parser_args.add_mechanotransduction_arguments(parser)
+#     mech_parser_args.add_mechanotransduction_arguments(parser)
 
-def mechanotransduction_example_gq(parser: argparse.ArgumentParser):
-    sys.path.insert(0, (here / ".." / "model-files").as_posix())
-    import mech_parser_args
+# def mechanotransduction_example_gq(parser: argparse.ArgumentParser):
+#     sys.path.insert(0, (here / ".." / "model-files").as_posix())
+#     import mech_parser_args
 
-    mech_parser_args.add_mechanotransduction_gq_arguments(parser)
+#     mech_parser_args.add_mechanotransduction_gq_arguments(parser)
 
 def nuc_mechanics(parser: argparse.ArgumentParser):
     sys.path.insert(0, (here / ".." / "model-files").as_posix())
@@ -36,11 +36,11 @@ def coupled_example(parser: argparse.ArgumentParser):
 
 #     mech_parser_args.add_coupled_minimal_arguments(parser)
 
-def preprocess_mech_mesh(parser: argparse.ArgumentParser):
-    sys.path.insert(0, (here / ".." / "model-files").as_posix())
-    import mech_parser_args
+# def preprocess_mech_mesh(parser: argparse.ArgumentParser):
+#     sys.path.insert(0, (here / ".." / "model-files").as_posix())
+#     import mech_parser_args
 
-    mech_parser_args.add_preprocess_mech_mesh_arguments(parser)
+#     mech_parser_args.add_preprocess_mech_mesh_arguments(parser)
 
 
 
@@ -61,20 +61,20 @@ def setup_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("convert-notebooks", help="Convert notebooks to python files")
 
     # Mechanotransduction example
-    preprocess_mech_mesh_parser = subparsers.add_parser(
-        "mechanotransduction-preprocess", help="Preprocess mesh for mechanotransduction example"
-    )
-    preprocess_mech_mesh(preprocess_mech_mesh_parser)
+    # preprocess_mech_mesh_parser = subparsers.add_parser(
+    #     "mechanotransduction-preprocess", help="Preprocess mesh for mechanotransduction example"
+    # )
+    # preprocess_mech_mesh(preprocess_mech_mesh_parser)
 
-    mechanotransduction_parser = subparsers.add_parser(
-        "mechanotransduction", help="Run mechanotransduction simulation"
-    )
-    mechanotransduction_example(mechanotransduction_parser)
+    # mechanotransduction_parser = subparsers.add_parser(
+    #     "mechanotransduction", help="Run mechanotransduction simulation"
+    # )
+    # mechanotransduction_example(mechanotransduction_parser)
 
-    mechanotransduction_gq_parser = subparsers.add_parser(
-        "mechanotransduction_gq", help="Run mechanotransduction_gq simulation"
-    )
-    mechanotransduction_example_gq(mechanotransduction_gq_parser)
+    # mechanotransduction_gq_parser = subparsers.add_parser(
+    #     "mechanotransduction_gq", help="Run mechanotransduction_gq simulation"
+    # )
+    # mechanotransduction_example_gq(mechanotransduction_gq_parser)
 
     nuc_mechanics_parser = subparsers.add_parser(
         "nuc_mechanics", help="Run nuclear mechanics simulation"

@@ -12,18 +12,18 @@ commands = {
         msg="Convert notebook",
         script=runner.convert_notebooks
     ),
-    "mechanotransduction-preprocess": Command(
-        msg="Run preprocess mechanotransduction mesh",
-        script=runner.preprocess_mech_mesh
-    ),
-    "mechanotransduction": Command(
-        msg="Run mechanotransduction example",
-        script=runner.mechanotransduction_example
-    ),
-    "mechanotransduction_gq": Command(
-        msg="Run mechanotransduction example",
-        script=runner.mechanotransduction_example_gq
-    ),
+    # "mechanotransduction-preprocess": Command(
+    #     msg="Run preprocess mechanotransduction mesh",
+    #     script=runner.preprocess_mech_mesh
+    # ),
+    # "mechanotransduction": Command(
+    #     msg="Run mechanotransduction example",
+    #     script=runner.mechanotransduction_example
+    # ),
+    # "mechanotransduction_gq": Command(
+    #     msg="Run mechanotransduction example",
+    #     script=runner.mechanotransduction_example_gq
+    # ),
     "nuc_mechanics": Command(
         msg="Run nuclear mechanics simulation",
         script=runner.nuc_mechanics

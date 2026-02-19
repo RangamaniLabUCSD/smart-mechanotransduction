@@ -149,7 +149,7 @@ def start_nuc_mech(args):
         args["nanopillar_height"] = 1.5
         args["nanopillar_spacing"] = 7.0 #3.5
         args["contactRad"] = 15.5
-        args["outdir"] = pathlib.Path(f"/root/scratch/nuc_indent_lowPitch")#tallerPartialSlip")
+        args["outdir"] = pathlib.Path(f"/root/scratch/nuc_indent_infBulk")#tallerPartialSlip")
         args["nuc_only"] = True
         args["softFactor"] = 1.0
         args["bulk_mod"] *= args["softFactor"]
@@ -570,7 +570,7 @@ def start_nuc_mech(args):
     # psi_c_mapped = sub_to_parent(psi_c, mesh)
     # psi_c_prev_mapped = sub_to_parent(psi_c_prev, mesh)
     Fvar = (inner(grad(v), Ttensor)*dx(1) - inner(v, T+Press_out)*ds(1) - inner(v, npContactForce)*ds(1) -
-            inner(v, Press_in)*ds(4) - inner(q, args["bulk_mod"]*(J-1) + p) * dx(1))
+            inner(v, Press_in)*ds(4) - inner(q,J-1)*dx(1))#inner(q, args["bulk_mod"]*(J-1) + p) * dx(1))
     #         -inner(psi_c_mapped - psi_c_prev_mapped, dot(v, n_g)) * ds(11))
     # u_mapped = interpolate(fmixed.sub(0), VectorFunctionSpace(V_psi.mesh(), "P", 1))
     # outer_vertex_map = mesh_ne_outer.topology().mapping()[mesh.id()].vertex_map()
