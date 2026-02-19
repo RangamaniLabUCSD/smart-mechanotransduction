@@ -12,7 +12,7 @@ else:
 nuc_dict = nucdef.start_nuc_mech(args)
 # if not nuc_dict["nuc_only"]:
 max_force = 1000.0 #nuc_dict["max_force"]
-kInc = 0.5
+kInc = 5.0
 while nuc_dict["kRamp"][-1] < max_force:
     nuc_dict["kRamp"][-1] = nuc_dict["kRamp"][-2] + kInc
     if nuc_dict["kRamp"][-1] > max_force:

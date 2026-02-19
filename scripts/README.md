@@ -6,12 +6,10 @@ usage: main.py [-h] [--submit-tscc]
                {convert-notebooks,mechanotransduction-preprocess,mechanotransduction,mechanotransduction-nuc-only}
 
     convert-notebooks   Convert notebooks to python files
-    mechanotransduction-preprocess
-                        Preprocess mesh for mechanotransduction example
-    mechanotransduction
-                        Run mechanotransduction example with cell on nanopillars
-    mechanotransduction-nuc-only
-                        Run mechanotransduction example with cell on nanopillars, only considering YAP/TAZ transport in and out of nucleus
+    nuc_mechanics
+                        Run nuclear mechanics only
+    mechanotransduction_coupled
+                        Run coupled nuclear mechanics - mechanotransduction simulation
 
 Each script has many arguments associated with testing conditions such as nuclear indentation, N-WASP reaction rate, etc. The full list with all default values defined can be found in `mech_parser_args.py` within the `model-files` folder.
 
@@ -19,12 +17,12 @@ There are currently 3 ways to execute the scripts. Examples of such calls can be
 
 1. By running the script without any additional flags, e.g
     ```
-    python3 main.py mechanotransduction [args]
+    python3 main.py mechanotransduction_coupled [args]
     ```
-    will run the script directly as a normal script. `[args]` is a series of arguments giving the specifications for a given simulation. For instance, to specify a nuclear indentation of 2.8, `--nuc-compression 2.8` would be appended.
-2. You can submit a job to an HPC cluster by adjusting the SLURM script in `runner.py` and passing the `--submit-tscc` (or another custom) flag, e.g
+    will run the script directly as a normal script. `[args]` is a series of arguments giving the specifications for a given simulation.
+2. You can submit a job to an HPC cluster by adjusting the SLURM script in `runner.py` and passing the `--submit-tscc` (or another custom) flag, e.g.
     ```
-    python3 main.py --submit-tscc mechanotransduction [args]
+    python3 main.py --submit-tscc mechanotransduction_coupled [args]
     ```
     Rather than running the script directly, this will generate a SLURM job script (see `runner.py`) for submission to an HPC cluster.
 3. You can navigate to the example folders and run the notebooks directly using `jupyter`
