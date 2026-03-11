@@ -1,3 +1,5 @@
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.18690946.svg)](https://doi.org/10.5281/zenodo.18690946)
+
 # smart-mechanotransduction
 
 This code provides a general framework for simulations of mechanotransduction using [SMART (Spatial Modeling Algorithms for Reaction and Transport)](https://github.com/RangamaniLabUCSD/smart.git).
