@@ -29,6 +29,7 @@ The relevant files for nuclear mechanics simulations include:
 - `nuclear_deformation_mixed3d.py`: Solve nuclear deformation on nanopillar array using mixed pressure-displacement formulation
 - `mechanotransduction_nucmech.ipynb`: Main model file providing the specifications for mechanotransduction signaling coupled to nuclear mechanics simulations.
 - `mech_parser_args.py`: Contains names and default values for all input arguments needed to run each script. See this file for definitions of all arguments.
+- `predict_rupture.py`: post-process data to predict rupture likelihoods
 
 ### mesh-files
 - `spread_cell_mesh_generation.py`: Functions used for mesh generation
