@@ -7,13 +7,13 @@ import subprocess as sp
 tscc_template = dedent(
     """#!/bin/bash
 #SBATCH --job-name="{job_name}"
-#SBATCH --partition=platinum
+#SBATCH --partition=condo
 #SBATCH --time=100:00:00
 #SBATCH --ntasks=1
 #SBATCH --output=%j-%x-stdout.txt
 #SBATCH --error=%j-%x-stderr.txt
 #SBATCH --account=csd786
-#SBATCH --qos=hcp-csd765
+#SBATCH --qos=condo
 #SBATCH --mem=10G
 
 module load singularitypro/3.11
